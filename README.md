@@ -23,7 +23,7 @@ brightness, live, from an in-game overlay.
   own HDR sliders (brightness, black level, UI) still apply.
 - **Quality presets**: *Ultra+* (the cheaper upgrades: 6 GB textures, 16x filtering, 2x view
   distance, finer fog, Cinematic lamp shadows, hair and sky) and *Cinematic* (everything on the
-  Ray tracing and Detail tabs at its highest), plus *High* (Cinematic with High global
+  Ray tracing and Detail tabs at its highest), plus *Cinematic-lite* (Cinematic with High global
   illumination instead of Cinematic). Camera effects and HDR are left alone.
   Measured on an RTX 5080 at 4K with DLSS Quality and Frame Generation in one scene: Game 144 fps,
   Ultra+ 134 fps (about 7% slower), Cinematic 84 fps (about 70% slower).

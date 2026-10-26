@@ -189,5 +189,5 @@ Ray Tracing on, one scene, camera options on): Game 6.93 ms (144.3 fps), Ultra+ 
 The user turned options off one by one under Cinematic: Cinematic GI is the big cost (its
 `DownsampleFactor` 16 -> 8 gives 4x the screen probes, `TracingOctahedronResolution` 8 -> 16 4x
 the rays each). 0.4.0 adds GI "High" (the cheap Cine keys: radiance cache budget 1000 and the
-translucency volume values, no probe spacing or octahedron change) and a "High" preset
+translucency volume values, no probe spacing or octahedron change) and a "Cinematic-lite" preset (named High at first)
 (Cinematic with GI High). Not measured yet.

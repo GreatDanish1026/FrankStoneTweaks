@@ -666,7 +666,7 @@ const QualityPreset kPresets[] = {
      "Ray tracing stays as the menu sets it.",
      {{"TexturePool", 6144}, {"Anisotropy", 16}, {"ViewDistance", 2}, {"FogCells", 6}, {"SoftShadows", 1},
       {"HairDetail", 1}, {"SkyDetail", 1}}},
-    {"High", "",
+    {"Cinematic-lite", "",
      "Cinematic without its costly global illumination: High GI (bigger lighting cache\n"
      "budget, Cinematic fog, glass and hair lighting), the game's Cinematic reflections,\n"
      "8 GB texture memory, 16x filtering, Cinematic (10x) view distance, the finest fog, and\n"
@@ -1114,8 +1114,8 @@ void DrawOverlay(effect_runtime*) {
     }
     ImGui::EndDisabled();
     Help("Sets the Ray tracing and Detail options together. Ultra+ costs about 7%, Cinematic\n"
-         "about 70% (RTX 5080, 4K, DLSS Quality, Frame Generation, one scene); High is Cinematic\n"
-         "without its costly global illumination (not measured yet). Camera effects\n"
+         "about 70% (RTX 5080, 4K, DLSS Quality, Frame Generation, one scene); Cinematic-lite is\n"
+         "Cinematic without its costly global illumination (not measured yet). Camera effects\n"
          "and HDR are left as they are. Changing an option afterwards shows Custom.\n"
          "Measure preset costs shows what each one costs on your PC.");
 
