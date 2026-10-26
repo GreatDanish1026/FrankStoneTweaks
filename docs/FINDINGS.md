@@ -191,3 +191,8 @@ The user turned options off one by one under Cinematic: Cinematic GI is the big 
 the rays each). 0.4.0 adds GI "High" (the cheap Cine keys: radiance cache budget 1000 and the
 translucency volume values, no probe spacing or octahedron change) and a "Cinematic-lite" preset (named High at first)
 (Cinematic with GI High). Not measured yet.
+
+Second measurement (2026-10-26 19:33, same setup and scene): Game 6.84 ms (146.2 fps), Ultra+ 7.39
+(135.4, +8%), Cinematic-lite 7.77 (128.8, +14%), Cinematic 11.54 (86.7, +69%). Cinematic-lite adds
+Cinematic reflections, 10x view distance and 4 px fog to Ultra+ for about 6% more; Cinematic GI
+alone is the other ~50%.

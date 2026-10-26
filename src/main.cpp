@@ -648,8 +648,9 @@ std::string GameValue(const wchar_t* name) {
 // derived from the options, "Custom" when none matches.
 //
 // Costs measured 2026-10-26 with "Measure preset costs": RTX 5080, 4K, DLSS Quality, Frame
-// Generation, the menu's Ultra with Ray Tracing on, one scene. Average displayed frame rate:
-// Game 144.3, Ultra+ 134.5 (+7% frame time), Cinematic 84.0 (+72%). docs/FINDINGS.md.
+// Generation, the menu's Ultra with Ray Tracing on, one scene, two runs. Average displayed frame
+// rate: Game 144.3 / 146.2, Ultra+ 134.5 / 135.4 (+7% / +8% frame time), Cinematic-lite 128.8
+// (+14%), Cinematic 84.0 / 86.7 (+72% / +69%). docs/FINDINGS.md.
 
 struct QualityPreset {
     const char* label;
@@ -660,17 +661,17 @@ struct QualityPreset {
 
 const QualityPreset kPresets[] = {
     {"Game", "", "The game's own settings: everything on the Ray tracing and Detail tabs at Game.", {}},
-    {"Ultra+", "about 7% slower",
+    {"Ultra+", "about 8% slower",
      "The cheaper upgrades past the menu's Ultra: 6 GB texture memory, 16x filtering, 2x view\n"
      "distance, finer fog, and the game's Cinematic lamp soft shadows, hair and sky.\n"
      "Ray tracing stays as the menu sets it.",
      {{"TexturePool", 6144}, {"Anisotropy", 16}, {"ViewDistance", 2}, {"FogCells", 6}, {"SoftShadows", 1},
       {"HairDetail", 1}, {"SkyDetail", 1}}},
-    {"Cinematic-lite", "",
+    {"Cinematic-lite", "about 14% slower",
      "Cinematic without its costly global illumination: High GI (bigger lighting cache\n"
      "budget, Cinematic fog, glass and hair lighting), the game's Cinematic reflections,\n"
      "8 GB texture memory, 16x filtering, Cinematic (10x) view distance, the finest fog, and\n"
-     "the Cinematic lamp soft shadows, hair and sky. Not measured yet.",
+     "the Cinematic lamp soft shadows, hair and sky.",
      {{"CineGi", 2}, {"CineReflections", 1}, {"TexturePool", 8192}, {"Anisotropy", 16}, {"ViewDistance", 10},
       {"FogCells", 4}, {"SoftShadows", 1}, {"HairDetail", 1}, {"SkyDetail", 1}}},
     {"Cinematic", "about 70% slower",
@@ -1113,10 +1114,10 @@ void DrawOverlay(effect_runtime*) {
         ImGui::EndCombo();
     }
     ImGui::EndDisabled();
-    Help("Sets the Ray tracing and Detail options together. Ultra+ costs about 7%, Cinematic\n"
-         "about 70% (RTX 5080, 4K, DLSS Quality, Frame Generation, one scene); Cinematic-lite is\n"
-         "Cinematic without its costly global illumination (not measured yet). Camera effects\n"
-         "and HDR are left as they are. Changing an option afterwards shows Custom.\n"
+    Help("Sets the Ray tracing and Detail options together. Ultra+ costs about 8%,\n"
+         "Cinematic-lite about 14%, Cinematic about 70% (RTX 5080, 4K, DLSS Quality, Frame\n"
+         "Generation, one scene). Camera effects and HDR are left as they are. Changing an\n"
+         "option afterwards shows Custom.\n"
          "Measure preset costs shows what each one costs on your PC.");
 
     if (measuring) {
