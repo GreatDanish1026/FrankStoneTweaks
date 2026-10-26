@@ -134,3 +134,16 @@ switches (`r.RayTracing.Shadows.Lights.*`) and `SamplesPerPixel` exist. Not yet 
 - A stable PSO cache ships (`Content/PipelineCaches/Windows/SMG037UE5_PCD3D_SM6.stable.upipelinecache`);
   `r.PSOPrecaching` exists (experimental in 5.1). Players still report stutter.
 - Old crash (May 2025, RTX 4070 Ti SUPER): DXGI device hung (887A0006).
+
+## GPU hang with 0.1.2 (2026-10-26 19:02)
+
+`CurrentQueue.Device->GetDevice()->GetDeviceRemovedReason() failed ... 887A0006` (DXGI_ERROR_DEVICE_HUNG),
+67 s after start, with Cinematic GI, Cinematic reflections, RT shadows and a 3700-nit peak all
+applied at the title screen (crash `UECC-Windows-F002856C...`). The same error is in the user's
+May 2025 crash report with no add-on, so the game can hang on its own; the question is which
+option makes it likely.
+
+No way to see the hung pass: logging is compiled out (`LogD3D12RHI` is an `FNoLoggingCategory`),
+and the shipped Aftermath dump writer (`AftermathGpuCrashDumpCallback`) only writes Vulkan dumps.
+Bisecting instead: next run without RT shadows (never enabled by the game, so untested on its
+content), then without the Cinematic reflections (hit lighting).
