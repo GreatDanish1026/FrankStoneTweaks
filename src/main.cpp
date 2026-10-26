@@ -265,7 +265,7 @@ std::vector<Option> g_options = {
 
 // Guards everything the overlay and the game thread share: options, the maps below, the
 // lookup cache.
-std::mutex g_state;
+std::recursive_mutex g_state;
 
 // HDR peak brightness in nits (0 = the game's).
 int g_hdrPeak = 0;
@@ -388,7 +388,7 @@ void FindManager() {
         return;
     }
     {
-        std::lock_guard<std::mutex> lock(g_state);
+        std::lock_guard<std::recursive_mutex> lock(g_state);
         g_manager = manager;
     }
     if (!cvars::HookSinks(base, manager, &HookedSinks, &g_origSinks)) {
@@ -579,7 +579,7 @@ void LiveOnPresent() {
 void GameTick() {
     ++g_ticks;
     if (g_live.load() != Live::Ready) return;
-    std::unique_lock<std::mutex> lock(g_state, std::try_to_lock);
+    std::unique_lock<std::recursive_mutex> lock(g_state, std::try_to_lock);
     if (!lock.owns_lock()) return;  // the overlay is busy: next frame
     for (auto& [key, value] : g_pendingConsole) {
         bool ok = SetVar(key, value);
@@ -632,11 +632,74 @@ std::string GameValue(const wchar_t* name) {
     return Read(name, cur) ? Narrow(cur) : std::string();
 }
 
+// ---------------------------------------------------------------- presets
+//
+// A preset sets the Ray tracing and Detail options (option key -> choice id); every other option
+// on those tabs goes to Game. Camera effects (taste) and HDR are left alone. The preset shown is
+// derived from the options, "Custom" when none matches. Costs: none measured yet on this game, so
+// the picker says so and points at "Measure preset costs" (from DirectiveTweaks).
+
+struct QualityPreset {
+    const char* label;
+    const char* cost;  // shown next to the label in the picker ("" = none)
+    const char* tip;
+    std::vector<std::pair<const char*, int>> values;
+};
+
+const QualityPreset kPresets[] = {
+    {"Game", "", "The game's own settings: everything on the Ray tracing and Detail tabs at Game.", {}},
+    {"Ultra+", "",
+     "The cheaper upgrades past the menu's Ultra: 6 GB texture memory, 16x filtering, 2x view\n"
+     "distance, finer fog, and the game's Cinematic lamp soft shadows, hair and sky.\n"
+     "Ray tracing stays as the menu sets it.",
+     {{"TexturePool", 6144}, {"Anisotropy", 16}, {"ViewDistance", 2}, {"FogCells", 6}, {"SoftShadows", 1},
+      {"HairDetail", 1}, {"SkyDetail", 1}}},
+    {"Cinematic", "",
+     "Everything at its highest: the game's Cinematic global illumination and reflections, 8 GB\n"
+     "texture memory, 16x filtering, Cinematic (10x) view distance, the finest fog, and the\n"
+     "Cinematic lamp soft shadows, hair and sky. For photo mode or a lot of GPU headroom.",
+     {{"CineGi", 1}, {"CineReflections", 1}, {"TexturePool", 8192}, {"Anisotropy", 16}, {"ViewDistance", 10},
+      {"FogCells", 4}, {"SoftShadows", 1}, {"HairDetail", 1}, {"SkyDetail", 1}}},
+};
+constexpr int kPresetCount = static_cast<int>(sizeof(kPresets) / sizeof(kPresets[0]));
+
+Option* FindOption(const char* key) {
+    for (Option& o : g_options)
+        if (!strcmp(o.key, key)) return &o;
+    return nullptr;
+}
+
+bool InPresets(const Option& o) { return !strcmp(o.tab, "Ray tracing") || !strcmp(o.tab, "Detail"); }
+
+int PresetValue(const QualityPreset& p, const char* key) {
+    for (auto& [k, id] : p.values)
+        if (!strcmp(key, k)) return id;
+    return 0;
+}
+
+// The preset the options match, or -1 (Custom).
+int CurrentPreset() {
+    for (int i = 0; i < kPresetCount; ++i) {
+        bool match = true;
+        for (const Option& o : g_options)
+            if (InPresets(o) && o.value != PresetValue(kPresets[i], o.key)) match = false;
+        if (match) return i;
+    }
+    return -1;
+}
+
+void ApplyPreset(int index) {
+    for (Option& o : g_options)
+        if (InPresets(o)) o.value = PresetValue(kPresets[index], o.key);
+    g_dirty = true;
+}
+
 // ---------------------------------------------------------------- frame time
 //
 // Present-to-present times while the game has focus. With DLSS Frame Generation on, every
 // other present is a generated frame, so the rate shown is the displayed one. The average,
-// not the median: with Frame Generation the intervals alternate short and long.
+// not the median: with Frame Generation the intervals alternate short and long (DirectiveTweaks
+// found the median picked one side).
 
 int64_t g_qpcFreq = 1;
 std::vector<float> g_frameMs;
@@ -650,16 +713,90 @@ float Mean(const std::vector<float>& v) {
     return static_cast<float>(sum / v.size());
 }
 
+// Cost measurement: each preset in turn, settle then sample; then the options as they were.
+// The settle time covers the game applying the change on its next frame and any stall while
+// it rebuilds lighting caches or shaders.
+constexpr ULONGLONG kSettleMs = 6000, kSampleMs = 8000;
+struct Measure {
+    bool running = false;
+    int stage = 0;  // preset index being measured
+    ULONGLONG stageStart = 0;
+    bool sampling = false;
+    std::vector<float> samples;
+    std::vector<std::pair<std::string, int>> saved;  // option values before
+    float resultMs[kPresetCount] = {};
+    bool done = false;
+    std::string note;
+} g_measure;
+
+void StartMeasure() {
+    g_measure = {};
+    g_measure.running = true;
+    for (const Option& o : g_options) g_measure.saved.push_back({o.key, o.value});
+    g_measure.stageStart = GetTickCount64();
+    ApplyPreset(0);
+    Log("measure: started");
+}
+
+void FinishMeasure(const char* why) {
+    for (auto& [key, value] : g_measure.saved)
+        if (Option* o = FindOption(key.c_str())) o->value = value;
+    g_dirty = true;
+    g_measure.running = false;
+    g_measure.note = why;
+    Log("measure: %s", why);
+}
+
+// Present thread. Takes g_state (options and g_measure are shared with the overlay and the game
+// thread).
+void MeasureOnFrame(float ms, bool focused) {
+    std::lock_guard<std::recursive_mutex> lock(g_state);
+    if (!g_measure.running) return;
+    if (!focused) return FinishMeasure("stopped: the game lost focus");
+    if (!g_enabled) return FinishMeasure("stopped: tweaks switched off (F8)");
+    if (g_live.load() != Live::Ready) return FinishMeasure("stopped: the game's settings aren't reachable");
+    ULONGLONG now = GetTickCount64();
+    if (!g_measure.sampling) {
+        if (now - g_measure.stageStart >= kSettleMs) g_measure.sampling = true, g_measure.stageStart = now;
+        return;
+    }
+    g_measure.samples.push_back(ms);
+    if (now - g_measure.stageStart < kSampleMs) return;
+    float avg = Mean(g_measure.samples);
+    g_measure.resultMs[g_measure.stage] = avg;
+    Log("measure: %s %.2f ms average (%.1f fps) over %zu frames", kPresets[g_measure.stage].label, avg, 1000.0f / avg,
+        g_measure.samples.size());
+    g_measure.samples.clear();
+    g_measure.sampling = false;
+    g_measure.stageStart = now;
+    if (++g_measure.stage < kPresetCount) {
+        ApplyPreset(g_measure.stage);
+        return;
+    }
+    g_measure.done = true;
+    char line[200];
+    int n = snprintf(line, sizeof(line), "measure: result");
+    for (int i = 1; i < kPresetCount; ++i)
+        n += snprintf(line + n, sizeof(line) - n, ", %s %+.0f%% frame time", kPresets[i].label,
+                      (g_measure.resultMs[i] / g_measure.resultMs[0] - 1) * 100);
+    Log("%s", line);
+    FinishMeasure("done");
+}
+
 void FrameOnPresent(bool focused) {
     static int64_t last = 0;
     LARGE_INTEGER t;
     QueryPerformanceCounter(&t);
     float ms = last ? static_cast<float>((t.QuadPart - last) * 1000.0 / g_qpcFreq) : 0;
     last = t.QuadPart;
-    if (!ms || !focused || ms > 500) return;
+    if (!ms || !focused || ms > 500) {
+        if (!focused) MeasureOnFrame(ms, false);
+        return;
+    }
     if (g_frameMs.size() < kFrameRing) g_frameMs.push_back(ms);
     else g_frameMs[g_framePos] = ms;
     g_framePos = (g_framePos + 1) % kFrameRing;
+    MeasureOnFrame(ms, true);
 }
 
 // ---------------------------------------------------------------- present
@@ -910,7 +1047,7 @@ void DrawAdvanced() {
 }
 
 void DrawOverlay(effect_runtime*) {
-    std::lock_guard<std::mutex> lock(g_state);  // the game thread skips a frame meanwhile
+    std::lock_guard<std::recursive_mutex> lock(g_state);  // the game thread skips a frame meanwhile
     ImGui::TextDisabled(FST_PRODUCT " " FST_VERSION);
     ImGui::SameLine();
     const Live live = g_live.load();
@@ -931,6 +1068,64 @@ void DrawOverlay(effect_runtime*) {
     ImGui::Spacing();
 
     bool changed = false;
+    const bool measuring = g_measure.running;
+
+    // Quality preset and cost measurement.
+    ImGui::BeginDisabled(measuring || live != Live::Ready);
+    const int current = CurrentPreset();
+    ChangedMark(current != 0);
+    ImGui::SetNextItemWidth(ControlWidth());
+    if (ImGui::BeginCombo("Quality preset", current >= 0 ? kPresets[current].label : "Custom")) {
+        for (int i = 0; i < kPresetCount; ++i) {
+            std::string item = kPresets[i].label;
+            if (*kPresets[i].cost) item += std::string(" (") + kPresets[i].cost + ")";
+            if (ImGui::Selectable(item.c_str(), i == current) && i != current) {
+                ApplyPreset(i);
+                changed = true;
+                Log("preset: %s", kPresets[i].label);
+            }
+            if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", kPresets[i].tip);
+        }
+        ImGui::EndCombo();
+    }
+    ImGui::EndDisabled();
+    Help("Sets the Ray tracing and Detail options together. Camera effects and HDR are left as\n"
+         "they are. Changing an option afterwards shows Custom.\n"
+         "Measure preset costs shows what each one costs on your PC.");
+
+    if (measuring) {
+        ImGui::TextColored(kAccent, "Measuring %s (%d of %d)... keep the camera still.", kPresets[g_measure.stage].label,
+                           g_measure.stage + 1, kPresetCount);
+        ImGui::SameLine();
+        if (ImGui::SmallButton("Stop")) FinishMeasure("stopped");
+    } else {
+        ImGui::TextUnformatted(" ");
+        ImGui::SameLine();
+        ImGui::BeginDisabled(live != Live::Ready || !g_enabled);
+        if (ImGui::SmallButton("Measure preset costs")) StartMeasure();
+        ImGui::EndDisabled();
+        Help("Runs Game, Ultra+ and Cinematic for 14 s each (6 s to settle, 8 s measured) and\n"
+             "shows how much longer each frame takes than with Game. Stand still in a typical\n"
+             "scene and leave the mouse alone; the overlay can stay open. Your options come back\n"
+             "afterwards. With Frame Generation on, the frame rate is the displayed one.");
+        if (g_measure.done) {
+            ImGui::SameLine();
+            std::string r = "Game " + std::to_string(static_cast<int>(1000.0f / g_measure.resultMs[0] + 0.5f)) + " fps";
+            for (int i = 1; i < kPresetCount; ++i) {
+                char b[80];
+                snprintf(b, sizeof(b), ", %s %.0f fps (%+.0f%% frame time)", kPresets[i].label,
+                         1000.0f / g_measure.resultMs[i], (g_measure.resultMs[i] / g_measure.resultMs[0] - 1) * 100);
+                r += b;
+            }
+            ImGui::TextDisabled("%s", r.c_str());
+        } else if (!g_measure.note.empty()) {
+            ImGui::SameLine();
+            ImGui::TextColored(kWarn, "Measurement %s.", g_measure.note.c_str());
+        }
+    }
+    ImGui::Spacing();
+
+    ImGui::BeginDisabled(measuring);
     ImGui::BeginDisabled(live != Live::Ready);
     if (ImGui::BeginTabBar("tabs")) {
         if (ImGui::BeginTabItem("Ray tracing")) {
@@ -960,6 +1155,7 @@ void DrawOverlay(effect_runtime*) {
         ImGui::EndTabBar();
     }
     ImGui::EndDisabled();
+    ImGui::EndDisabled();  // measuring
     if (changed) {
         SaveSettings();
         g_dirty = true;

@@ -173,3 +173,12 @@ High, Ultra. Menu Ultra textures and shadows are level 4 (Cine): `r.Streaming.Po
 - Chromatic aberration off through `r.SceneColorFringe.Max=0` (a clamp on the post-process value).
 - Unused Cine tiers used: ViewDistance (`r.ViewDistanceScale=10`), ShadingQuality (hair strands),
   EffectsQuality's sky atmosphere keys. Not yet confirmed in game.
+
+## Presets and cost measurement (0.3.0)
+
+Ported from DirectiveTweaks. Presets cover the Ray tracing and Detail tabs only. Measurement runs
+on the present thread (frame times are present-to-present, averaged), switching presets through
+the same options the game thread applies; 6 s settle (the change lands on the next game frame,
+plus any lighting-cache or shader stall) and 8 s sampled per preset. `g_state` became a
+recursive mutex, since the present callback and the overlay share it on one thread. Costs not
+measured yet.
