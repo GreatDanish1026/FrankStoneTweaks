@@ -1,4 +1,4 @@
-# FrankStoneTweaks 0.1.4
+# FrankStoneTweaks 0.2.0
 
 Graphics add-on for **The Casting of Frank Stone** (PC, Steam), for ReShade with add-on
 support. Raises the game's ray tracing past what its menu offers and sets the HDR peak
@@ -9,6 +9,14 @@ brightness, live, from an in-game overlay.
     many lighting probes, traces twice the directions per probe and lights fog more finely.
   - *Reflections: Cinematic*: the game's unused tier above Ultra. Reflections are lit
     properly where the ray hits, and glass and water get ray traced reflections too.
+- **Detail** (carried over from our other Unreal add-ons, past what the menu's Ultra reaches):
+  texture memory up to 8 GB (the menu gives 3 GB), 16x anisotropic filtering (the game uses 8x),
+  view distance 2x or the game's unused Cinematic 10x, finer volumetric fog, and the game's
+  unused Cinematic tiers for lamp soft shadows, strand hair, and the sky and haze.
+- **Camera**: switches for effects the menu can't turn off: depth of field (the menu only has
+  Normal and Ultra), chromatic aberration, vignette, the game's lens flares (or just their
+  anamorphic streaks), bloom (or full-resolution bloom), fog glow, and the always-on
+  sharpening. Motion blur and film grain are left to the menu.
 - **HDR**: set the peak brightness. The game always builds its tone curve for 1000 nits. Its
   own HDR sliders (brightness, black level, UI) still apply.
 - **F8** switches every tweak off and on, to compare.

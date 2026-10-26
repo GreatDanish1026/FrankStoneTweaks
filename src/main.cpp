@@ -45,7 +45,8 @@
 
 extern "C" __declspec(dllexport) const char* NAME = FST_PRODUCT;
 extern "C" __declspec(dllexport) const char* DESCRIPTION =
-    "Cinematic ray tracing and HDR peak brightness for " FST_GAME ", live from the overlay.";
+    "Cinematic ray tracing, extra detail, camera effect switches and HDR peak brightness for " FST_GAME
+    ", live from the overlay.";
 
 namespace {
 
@@ -145,6 +146,117 @@ std::vector<Option> g_options = {
       {"Cinematic", 1,
        {{L"r.Lumen.HardwareRayTracing.LightingMode", L"1"},
         {L"r.Lumen.TranslucencyReflections.FrontLayer.Enable", L"1"}}}}},
+    // ------------------------------------------------ detail (from DirectiveTweaks / UntilDawnTweaks)
+    // The menu's Ultra textures and shadows are already the game's Cinematic tier (3000 MB
+    // pool, 8192 shadow pages); these go past what the menu reaches.
+    {"Detail", "Textures", "TexturePool", "Texture memory",
+     "Video memory for streamed textures. The menu's Ultra gives 3 GB whatever the card,\n"
+     "so textures can go blurry and reload in larger scenes. The RTX 5080 has 16 GB.",
+     L"r.Streaming.PoolSize",
+     {{"Game", 0, {}},
+      {"4 GB", 4096, {{L"r.Streaming.PoolSize", L"4096"}}},
+      {"6 GB", 6144, {{L"r.Streaming.PoolSize", L"6144"}}},
+      {"8 GB", 8192, {{L"r.Streaming.PoolSize", L"8192"}}}}},
+    {"Detail", "Textures", "Anisotropy", "Anisotropic filtering",
+     "Sharper floors, roads and walls at shallow angles. The game uses 8x. Textures already\n"
+     "loaded keep their filtering until they reload (or the game restarts).",
+     L"r.MaxAnisotropy",
+     {{"Game", 0, {}}, {"16x", 16, {{L"r.MaxAnisotropy", L"16"}, {L"r.VT.MaxAnisotropy", L"16"}}}}},
+    {"Detail", "Distance", "ViewDistance", "View distance",
+     "How far away objects keep drawing and keep their detailed versions. The game's Ultra\n"
+     "is 1x; Cinematic is the game's own unused tier (10x). Costs more in open areas.",
+     L"r.ViewDistanceScale",
+     {{"Game", 0, {}},
+      {"Far (2x)", 2, {{L"r.ViewDistanceScale", L"2"}}},
+      {"Cinematic (10x)", 10, {{L"r.ViewDistanceScale", L"10"}}}}},
+    {"Detail", "Lighting", "FogCells", "Volumetric fog detail",
+     "Size of the fog's light grid in screen pixels: smaller cells give crisper flashlight\n"
+     "beams and light shafts and less blocky shadows in fog. The game's Ultra uses 8 px;\n"
+     "4 px is about 4x the fog cost.",
+     L"r.VolumetricFog.GridPixelSize",
+     {{"Game", 0, {}},
+      {"Fine (6 px)", 6,
+       {{L"r.VolumetricFog.GridPixelSize", L"6"}, {L"r.VolumetricFog.GridSizeZ", L"128"},
+        {L"r.VolumetricFog.HistoryMissSupersampleCount", L"16"}}},
+      {"Finest (4 px)", 4,
+       {{L"r.VolumetricFog.GridPixelSize", L"4"}, {L"r.VolumetricFog.GridSizeZ", L"128"},
+        {L"r.VolumetricFog.HistoryMissSupersampleCount", L"16"}}}}},
+    {"Detail", "Lighting", "SoftShadows", "Soft shadows from lamps",
+     "Shadow-map rays per pixel for lamps, torches and flashlights. The game's Ultra uses\n"
+     "8 rays of 5 samples (16 of 8 for the moon and sun); Cinematic gives lamps the same\n"
+     "16 of 8, for smoother soft shadow edges.",
+     L"r.Shadow.Virtual.SMRT.RayCountLocal",
+     {{"Game", 0, {}},
+      {"Cinematic", 1,
+       {{L"r.Shadow.Virtual.SMRT.RayCountLocal", L"16"}, {L"r.Shadow.Virtual.SMRT.SamplesPerRayLocal", L"8"}}}}},
+    {"Detail", "Characters and sky", "HairDetail", "Hair detail",
+     "The game's unused Cinematic tier for strand hair: 8 coverage samples per pixel\n"
+     "instead of 4 (smoother, less aliased hair edges) and finer sky lighting and\n"
+     "ambient occlusion on hair.",
+     L"r.HairStrands.Visibility.MSAA.SamplePerPixel",
+     {{"Game", 0, {}},
+      {"Cinematic", 1,
+       {{L"r.HairStrands.SkyLighting.IntegrationType", L"0"},
+        {L"r.HairStrands.SkyAO.SampleCount", L"8"},
+        {L"r.HairStrands.Visibility.MSAA.SamplePerPixel", L"8"}}}}},
+    {"Detail", "Characters and sky", "SkyDetail", "Sky and haze detail",
+     "The game's unused Cinematic tier for the sky and distance haze: the sky is computed\n"
+     "per pixel instead of from a small lookup table, with more samples, and haze over\n"
+     "distant objects is computed in finer depth slices. Smoother gradients at dusk and night.",
+     L"r.SkyAtmosphere.FastSkyLUT",
+     {{"Game", 0, {}},
+      {"Cinematic", 1,
+       {{L"r.SkyAtmosphere.AerialPerspectiveLUT.FastApplyOnOpaque", L"0"},
+        {L"r.SkyAtmosphere.AerialPerspectiveLUT.SampleCountMaxPerSlice", L"8"},
+        {L"r.SkyAtmosphere.AerialPerspectiveLUT.DepthResolution", L"32"},
+        {L"r.SkyAtmosphere.FastSkyLUT", L"0"},
+        {L"r.SkyAtmosphere.FastSkyLUT.SampleCountMax", L"256"},
+        {L"r.SkyAtmosphere.SampleCountMin", L"8"},
+        {L"r.SkyAtmosphere.SampleCountMax", L"256"},
+        {L"r.SkyAtmosphere.TransmittanceLUT.SampleCount", L"30"},
+        {L"r.SkyAtmosphere.MultiScatteringLUT.SampleCount", L"20"}}}}},
+
+    // ------------------------------------------------ camera effects the menu can't turn off
+    // The menu has switches for motion blur and film grain, so those aren't here. Its depth of
+    // field setting only offers Normal and Ultra.
+    {"Camera", "Lens", "DepthOfField", "Depth of field",
+     "Background and foreground blur in cutscenes and close-ups. The menu only offers\n"
+     "Normal and Ultra.",
+     L"r.DepthOfFieldQuality", {{"Game", 0, {}}, {"Off", 1, {{L"r.DepthOfFieldQuality", L"0"}}}}},
+    {"Camera", "Lens", "ChromaticAberration", "Chromatic aberration",
+     "Red and blue colour fringes towards the screen edges, imitating a cheap lens.",
+     L"r.SceneColorFringeQuality", {{"Game", 0, {}}, {"Off", 1, {{L"r.SceneColorFringe.Max", L"0"}}}}},
+    {"Camera", "Lens", "Vignette", "Vignette",
+     "Darkened screen corners. Off drops the tonemapper to quality 1, which also removes\n"
+     "film grain (also a switch in the game's menu).",
+     L"r.Tonemapper.Quality", {{"Game", 0, {}}, {"Off", 1, {{L"r.Tonemapper.Quality", L"1"}}}}},
+    {"Camera", "Lens", "LensFlares", "Lens flares",
+     "The game's own lens flare: ghosts and halos, star-shaped glare and horizontal\n"
+     "anamorphic streaks across bright lights. No streaks keeps the rest.",
+     L"r.LensFlare.RenderAnamorphicGlare",
+     {{"Game", 0, {}},
+      {"No streaks", 1, {{L"r.LensFlare.RenderAnamorphicGlare", L"0"}}},
+      {"Off", 2,
+       {{L"r.LensFlare.RenderFlare", L"0"}, {L"r.LensFlare.RenderGlare", L"0"},
+        {L"r.LensFlare.RenderAnamorphicGlare", L"0"}}}}},
+    {"Camera", "Light", "Bloom", "Bloom",
+     "Glow around bright lights. The game renders it at 71% resolution; Full resolution\n"
+     "is its unused Cinematic value. Off removes the glow entirely (lamps and the moon\n"
+     "look harsher, especially in HDR).",
+     L"r.Bloom.ScreenPercentage",
+     {{"Game", 0, {}}, {"Full resolution", 1, {{L"r.Bloom.ScreenPercentage", L"100"}}},
+      {"Off", 2, {{L"r.BloomQuality", L"0"}}}}},
+    {"Camera", "Light", "FogGlow", "Fog glow",
+     "Supermassive's screen-space fog scattering: bright lights bleed a soft glow into\n"
+     "fog, which also softens the whole image in foggy scenes.",
+     L"r.SSFS", {{"Game", 0, {}}, {"Off", 1, {{L"r.SSFS", L"0"}}}}},
+    {"Camera", "Image", "Sharpening", "Sharpening",
+     "The game always sharpens the final image (strength 1.5), on top of DLSS or TSR,\n"
+     "which can leave halos on edges and crawl on fine detail.",
+     L"r.Tonemapper.Sharpen",
+     {{"Game", 0, {}}, {"Light (0.5)", 1, {{L"r.Tonemapper.Sharpen", L"0.5"}}},
+      {"Off", 2, {{L"r.Tonemapper.Sharpen", L"0"}}}}},
+
     // No ray traced shadows: r.RayTracing.Shadows=1 hung the GPU within minutes, with all its
     // features, without hair voxel tracing too (0.1.2, 0.1.3). docs/FINDINGS.md.
     // No ray tracing range option: changing r.RayTracing.Culling while the game runs locked it
@@ -824,6 +936,15 @@ void DrawOverlay(effect_runtime*) {
         if (ImGui::BeginTabItem("Ray tracing")) {
             DrawRayTracingStatus();
             changed |= DrawTab("Ray tracing");
+            ImGui::EndTabItem();
+        }
+        if (ImGui::BeginTabItem("Detail")) {
+            changed |= DrawTab("Detail");
+            ImGui::EndTabItem();
+        }
+        if (ImGui::BeginTabItem("Camera")) {
+            ImGui::TextDisabled("Motion blur and film grain are switches in the game's own menu.");
+            changed |= DrawTab("Camera");
             ImGui::EndTabItem();
         }
         if (ImGui::BeginTabItem("HDR")) {

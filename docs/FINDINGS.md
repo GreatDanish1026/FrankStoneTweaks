@@ -157,3 +157,19 @@ shadow rays through the strand hair voxels; the game uses strand hair), and that
 "On, no hair tracing" froze the game as well (no crash report). 0.1.4 removes RT shadows: the
 user chose that over testing "simplest". RT shadows were never enabled by Supermassive and
 don't hold up on this game's content.
+
+## Detail and camera options (0.2.0)
+
+Menu facts: `SetDofQuality` only has Normal and Ultra (`EDofQualitySMG037`), `SetMotionBlurEnabled`
+sets `r.MotionBlur.Max`, `SetFilmGrainEnabled` sets `r.FilmGrain`; volumetric fog has Medium,
+High, Ultra. Menu Ultra textures and shadows are level 4 (Cine): `r.Streaming.PoolSize=3000`,
+`r.MaxAnisotropy=8`, VSM 8192 pages, SMRT 16x8 directional and 8x5 local, fog 8 px x 128.
+
+- The lens flare is Supermassive's (`r.LensFlareMethod=1`): `r.LensFlare.RenderFlare` (ghosts and
+  halos), `RenderGlare` (star glare), `RenderAnamorphicGlare` (horizontal streak), `RenderBloom`.
+- `r.SSFS*` is Supermassive's screen-space fog scattering (glow into fog).
+- `r.Tonemapper.Sharpen=1.5` is set in DefaultEngine.ini, on top of any upscaler.
+- `r.Tonemapper.Quality`: 0 basic, 2 + vignette, 4 + grain, 5 + grain jitter; vignette off = 1.
+- Chromatic aberration off through `r.SceneColorFringe.Max=0` (a clamp on the post-process value).
+- Unused Cine tiers used: ViewDistance (`r.ViewDistanceScale=10`), ShadingQuality (hair strands),
+  EffectsQuality's sky atmosphere keys. Not yet confirmed in game.
