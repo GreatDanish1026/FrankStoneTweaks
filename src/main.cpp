@@ -636,8 +636,11 @@ std::string GameValue(const wchar_t* name) {
 //
 // A preset sets the Ray tracing and Detail options (option key -> choice id); every other option
 // on those tabs goes to Game. Camera effects (taste) and HDR are left alone. The preset shown is
-// derived from the options, "Custom" when none matches. Costs: none measured yet on this game, so
-// the picker says so and points at "Measure preset costs" (from DirectiveTweaks).
+// derived from the options, "Custom" when none matches.
+//
+// Costs measured 2026-10-26 with "Measure preset costs": RTX 5080, 4K, DLSS Quality, Frame
+// Generation, the menu's Ultra with Ray Tracing on, one scene. Average displayed frame rate:
+// Game 144.3, Ultra+ 134.5 (+7% frame time), Cinematic 84.0 (+72%). docs/FINDINGS.md.
 
 struct QualityPreset {
     const char* label;
@@ -648,13 +651,13 @@ struct QualityPreset {
 
 const QualityPreset kPresets[] = {
     {"Game", "", "The game's own settings: everything on the Ray tracing and Detail tabs at Game.", {}},
-    {"Ultra+", "",
+    {"Ultra+", "about 7% slower",
      "The cheaper upgrades past the menu's Ultra: 6 GB texture memory, 16x filtering, 2x view\n"
      "distance, finer fog, and the game's Cinematic lamp soft shadows, hair and sky.\n"
      "Ray tracing stays as the menu sets it.",
      {{"TexturePool", 6144}, {"Anisotropy", 16}, {"ViewDistance", 2}, {"FogCells", 6}, {"SoftShadows", 1},
       {"HairDetail", 1}, {"SkyDetail", 1}}},
-    {"Cinematic", "",
+    {"Cinematic", "about 70% slower",
      "Everything at its highest: the game's Cinematic global illumination and reflections, 8 GB\n"
      "texture memory, 16x filtering, Cinematic (10x) view distance, the finest fog, and the\n"
      "Cinematic lamp soft shadows, hair and sky. For photo mode or a lot of GPU headroom.",
@@ -1084,13 +1087,19 @@ void DrawOverlay(effect_runtime*) {
                 changed = true;
                 Log("preset: %s", kPresets[i].label);
             }
-            if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", kPresets[i].tip);
+            if (ImGui::IsItemHovered())
+                ImGui::SetTooltip("%s%s", kPresets[i].tip,
+                                  *kPresets[i].cost ? "\n\nMeasured on an RTX 5080 at 4K (DLSS Quality, Frame Generation,\n"
+                                                      "Ray Tracing on) in one scene: heavier scenes may cost more.\n"
+                                                      "Measure preset costs checks them on your PC."
+                                                    : "");
         }
         ImGui::EndCombo();
     }
     ImGui::EndDisabled();
-    Help("Sets the Ray tracing and Detail options together. Camera effects and HDR are left as\n"
-         "they are. Changing an option afterwards shows Custom.\n"
+    Help("Sets the Ray tracing and Detail options together. Ultra+ costs about 7%, Cinematic\n"
+         "about 70% (RTX 5080, 4K, DLSS Quality, Frame Generation, one scene). Camera effects\n"
+         "and HDR are left as they are. Changing an option afterwards shows Custom.\n"
          "Measure preset costs shows what each one costs on your PC.");
 
     if (measuring) {

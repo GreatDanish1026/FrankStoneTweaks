@@ -180,5 +180,8 @@ Ported from DirectiveTweaks. Presets cover the Ray tracing and Detail tabs only.
 on the present thread (frame times are present-to-present, averaged), switching presets through
 the same options the game thread applies; 6 s settle (the change lands on the next game frame,
 plus any lighting-cache or shader stall) and 8 s sampled per preset. `g_state` became a
-recursive mutex, since the present callback and the overlay share it on one thread. Costs not
-measured yet.
+recursive mutex, since the present callback and the overlay share it on one thread.
+
+First measurement (2026-10-26 19:22, RTX 5080, 4K, DLSS Quality, Frame Generation, menu Ultra with
+Ray Tracing on, one scene, camera options on): Game 6.93 ms (144.3 fps), Ultra+ 7.43 ms (134.5 fps,
++7%), Cinematic 11.90 ms (84.0 fps, +72%). Which Cinematic option costs most isn't known yet.
