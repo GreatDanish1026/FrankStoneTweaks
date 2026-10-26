@@ -148,18 +148,13 @@ std::vector<Option> g_options = {
     {"Ray tracing", "Shadows", "RtShadows", "Ray traced shadows",
      "Shadows from ray tracing instead of shadow maps: contact-hardening (sharp near the\n"
      "object, softer further away) and no shadow-map blockiness or light leaking. The\n"
-     "engine supports them but the game ships with them off.",
+     "engine supports them but the game ships with them off. Turning them on makes the\n"
+     "game build its ray traced shadow shaders first: expect several seconds of stutter\n"
+     "(once per game start).",
      L"r.RayTracing.Shadows",
      {{"Game", 0, {}}, {"On", 1, {{L"r.RayTracing.Shadows", L"1"}}}}},
-    // Culling 0 (nothing culled) put every object of the streamed level, foliage included, into
-    // the ray tracing scene, and the game hung right after it was chosen in 0.1.0: not offered.
-    {"Ray tracing", "Shadows", "RtRange", "Ray tracing range",
-     "The game (mode 3) leaves objects out of the ray tracing scene when they are far away\n"
-     "OR small on screen, in front of the camera too, so their ray traced shadows and\n"
-     "reflections can vanish or pop. In view keeps everything in front of the camera and\n"
-     "only drops objects behind it that are both far and small (mode 1).",
-     L"r.RayTracing.Culling",
-     {{"Game", 0, {}}, {"In view", 2, {{L"r.RayTracing.Culling", L"1"}}}}},
+    // No ray tracing range option: changing r.RayTracing.Culling while the game runs locked it
+    // up, with 0 (0.1.0) and with 1 (0.1.1, set on the game thread). docs/FINDINGS.md.
 };
 
 // Guards everything the overlay and the game thread share: options, the maps below, the
@@ -339,7 +334,7 @@ constexpr uint32_t kGEngineRva = 0x8da0c30;    // ?GEngine@@3PEAVUEngine@@EA
 constexpr uint32_t kGameUserSettings = 0x2b0;  // UEngine::GameUserSettings (HDRSettingChangedSinkCallback)
 constexpr uint32_t kUseHdr = 0x10c;            // UGameUserSettings::bUseHDRDisplayOutput (bool)
 constexpr uint32_t kHdrNits = 0x110;           // UGameUserSettings::HDRDisplayOutputNits (int)
-constexpr uint32_t kSinkNitsRva = 0x8da2164;   // the nits the sink last built the curve for
+constexpr uint32_t kSinkNitsRva = 0x8da2164;   // the sink's copy of MaxLuminance, stored after each rebuild
 
 struct Peak {
     bool knownBuild = false;
@@ -508,7 +503,7 @@ void GameTick() {
         uint8_t flag = 0;
         int nits = 0;
         if (settings && cvars::SafeCopy(&flag, settings + kUseHdr, 1) && cvars::SafeCopy(&nits, settings + kHdrNits, 4))
-            Log("game user settings %p: bUseHDRDisplayOutput %u, HDRDisplayOutputNits %d; tone curve built for %d nits",
+            Log("game user settings %p: bUseHDRDisplayOutput %u, HDRDisplayOutputNits %d; HDR code last saw a peak of %d nits",
                 settings, flag, nits, SinkNits());
         else
             Log("game user settings not found (%s build)", g_peak.knownBuild ? "known" : "unknown");
@@ -707,7 +702,7 @@ void DrawHdr() {
     if (!g_peak.knownBuild)
         ImGui::TextColored(kWarn, "This game version isn't the one tested: the peak can't be changed.");
     else if (hdr)
-        ImGui::TextDisabled("The game's tone curve is built for %d nits.", SinkNits());
+        ImGui::TextDisabled("The game's HDR code last picked up a peak of %d nits.", SinkNits());
 
     ImGui::SeparatorText("The game's HDR menu");
     float mid = ReadFloat(L"r.HDR.Display.MidLuminance", 0);

@@ -97,8 +97,15 @@ and restores its priority byte.
 Lumen's probe counts and resolutions size GPU resources; changing them mid-frame can leave one
 pass using the old size and the next the new, which can fault the GPU. Hence the move to the
 game thread. `r.RayTracing.Culling=0` puts every object of the streamed level (foliage
-included) into the ray tracing scene, enough on its own for very long frames; the option now
-offers only mode 1 (cull behind the camera only). Game's mode is 3 (distance OR angle, both sides).
+included) into the ray tracing scene, enough on its own for very long frames. Game's mode is 3 (distance OR angle, both sides).
+
+0.1.1 (game-thread sets) ran fine with Cinematic GI and reflections, RT shadows and a 3700-nit
+peak, but setting `r.RayTracing.Culling=1` locked the game up as well, so 0.1.2 has no culling
+option. Turning RT shadows on stalls and stutters for some seconds first (building the RT shadow
+pipeline), then works.
+
+The sink's static at 0x148da2164 is its copy of `r.HDR.Display.MaxLuminance`, stored after a
+rebuild (0 until the first one), not the nits argument.
 
 ## HDR
 
