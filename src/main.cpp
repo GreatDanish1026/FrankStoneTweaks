@@ -3,10 +3,16 @@
 // in-game overlay.
 //
 // Everything goes through the game's console variables (cvars.hpp: console manager found by
-// code scan, UE 5.1 layout read from the linker map the game ships). Values are set at console
+// code scan, UE 5.1 layout read from the linker map the game ships). Values are set on the game
+// thread, from the console manager's once-per-frame CallAllConsoleVariableSinks (GameTick), so
+// they reach the renderer between frames like the console's own. They are set at console
 // priority, above the game's own menu code, so they stay until the option goes back to Game;
 // then the game's value and priority are put back. A check every second puts back anything
 // that changed anyway. F8 switches all of it off and on for comparison.
+//
+// Threads: ReShade's present thread draws the overlay and only changes options; the game
+// thread does all setting. Both take g_state; the game thread only tries it and skips a frame
+// if the overlay holds it, so it never waits on the present thread.
 //
 // No Engine.ini is written; nothing is left behind when the add-on is removed (see the HDR
 // section for the one exception while the game runs).
@@ -145,17 +151,24 @@ std::vector<Option> g_options = {
      "engine supports them but the game ships with them off.",
      L"r.RayTracing.Shadows",
      {{"Game", 0, {}}, {"On", 1, {{L"r.RayTracing.Shadows", L"1"}}}}},
+    // Culling 0 (nothing culled) put every object of the streamed level, foliage included, into
+    // the ray tracing scene, and the game hung right after it was chosen in 0.1.0: not offered.
     {"Ray tracing", "Shadows", "RtRange", "Ray tracing range",
-     "The game leaves small objects out of the ray tracing scene beyond 50 m and behind\n"
-     "the camera, so their ray traced shadows and reflections can vanish or pop.\n"
-     "Everything keeps all objects in (more ray tracing work in large scenes).",
+     "The game (mode 3) leaves objects out of the ray tracing scene when they are far away\n"
+     "OR small on screen, in front of the camera too, so their ray traced shadows and\n"
+     "reflections can vanish or pop. In view keeps everything in front of the camera and\n"
+     "only drops objects behind it that are both far and small (mode 1).",
      L"r.RayTracing.Culling",
-     {{"Game", 0, {}}, {"Everything", 1, {{L"r.RayTracing.Culling", L"0"}}}}},
+     {{"Game", 0, {}}, {"In view", 2, {{L"r.RayTracing.Culling", L"1"}}}}},
 };
+
+// Guards everything the overlay and the game thread share: options, the maps below, the
+// lookup cache.
+std::mutex g_state;
 
 // HDR peak brightness in nits (0 = the game's).
 int g_hdrPeak = 0;
-bool g_enabled = true;  // F8
+std::atomic<bool> g_enabled{true};  // F8
 
 const Choice* Chosen(const Option& o) {
     for (const Choice& c : o.choices)
@@ -188,8 +201,11 @@ std::map<std::wstring, std::wstring> g_originals;  // the game's value of each c
 std::map<std::wstring, uint32_t> g_origPriority;   // ...and the priority it was set at
 std::map<std::wstring, std::wstring> g_applied;    // what we keep in force
 std::set<std::wstring> g_rejected;                 // values the game didn't take (logged once)
-bool g_dirty = true;                               // options changed: apply at the next present
+std::atomic<bool> g_dirty{true};                   // options changed: apply at the next game tick
 int g_reapplied = 0;                               // values put back after they changed
+std::vector<std::pair<std::wstring, std::wstring>> g_pendingConsole;  // Advanced tab's "Set once"
+std::atomic<bool> g_hooked{false};                 // game-thread hook in place
+std::atomic<uint64_t> g_ticks{0};                  // game ticks seen by the hook
 
 struct VarInfo {
     void* var = nullptr;
@@ -238,6 +254,9 @@ int Callbacks(void* var) {
     return n;
 }
 
+void __fastcall HookedSinks(void* self);
+cvars::SinksFn g_origSinks = nullptr;
+
 void FindManager() {
     const uint8_t* base = reinterpret_cast<const uint8_t*>(GetModuleHandleW(nullptr));
     Log("game exe timestamp 0x%08x (%s)", cvars::PeTimestamp(base),
@@ -262,56 +281,35 @@ void FindManager() {
     bool reads = slots && cvars::GetInt(aniso, a) && cvars::GetFloat(screen, s);
     Log("layout check: r.MaxAnisotropy %p, r.ScreenPercentage %p, IsVariableBool at +0x%x, values %d / %g", aniso,
         screen, cvars::g_isVariableBool, a, s);
-    cvars::Storage st;
-    bool storage = reads && cvars::GetStorage(aniso, st);
-    if (!reads || !storage || a < 1 || a > 16 || !(s >= 10 && s <= 400)) {
+    if (!reads || a < 1 || a > 16 || !(s >= 10 && s <= 400)) {
         g_liveError = "the game's settings layout didn't match (see the log)";
         g_live = Live::Failed;
         return;
     }
-    Log("r.MaxAnisotropy storage: %s, main %p, renderer %p", st.ref ? "ref" : "data", st.main, st.render);
-    g_manager = manager;
+    {
+        std::lock_guard<std::mutex> lock(g_state);
+        g_manager = manager;
+    }
+    if (!cvars::HookSinks(base, manager, &HookedSinks, &g_origSinks)) {
+        g_liveError = "couldn't reach the game thread (see the log)";
+        Log("game-thread hook: CallAllConsoleVariableSinks slot not found");
+        g_live = Live::Failed;
+        return;
+    }
+    g_hooked = true;
+    Log("game-thread hook in place (CallAllConsoleVariableSinks was %p)", reinterpret_cast<void*>(g_origSinks));
     g_live = Live::Ready;
 }
 
-// Puts <value> in force at console priority. Variables with change callbacks get the value
-// written straight into their storage instead: Set would run those callbacks on this (not the
-// game's) thread. The sink flag is raised either way so the game thread's sinks see the change.
+// Puts <value> in force at console priority. Game thread only.
 bool SetVar(const std::wstring& key, const std::wstring& value, uint32_t priority = cvars::kSetByConsole) {
     VarInfo v = Lookup(key);
     if (!v.var) {
         if (g_rejected.insert(key).second) Log("%ls not found", key.c_str());
         return false;
     }
-    int callbacks = Callbacks(v.var);
-    bool ok;
-    if (callbacks != 0) {
-        cvars::Storage s;
-        ok = cvars::GetStorage(v.var, s);
-        if (ok) {
-            uint8_t raw[4] = {};
-            if (s.type == cvars::Type::Float) {
-                float f = static_cast<float>(_wtof(value.c_str()));
-                memcpy(raw, &f, 4);
-            } else {
-                int32_t i = _wtoi(value.c_str());
-                memcpy(raw, &i, 4);
-            }
-            ok = cvars::SafeCopy(const_cast<uint8_t*>(s.main), raw, s.size) && cvars::SafeCopy(s.render, raw, s.size) &&
-                 cvars::RestorePriority(v.var, priority);
-            if (g_manager) {
-                uint8_t one = 1;
-                cvars::SafeCopy(static_cast<uint8_t*>(g_manager) + 0xe0, &one, 1);  // bCallAllConsoleVariableSinks
-            }
-        }
-        static std::set<std::wstring> logged;
-        if (logged.insert(key).second)
-            Log("%ls has %d change callback(s): written directly (callbacks not run)", key.c_str(), callbacks);
-    } else {
-        ok = cvars::Set(v.var, value.c_str(), priority);
-    }
-    if (!ok) return false;
-    std::wstring now;
+    if (!cvars::Set(v.var, value.c_str(), priority)) return false;
+    std::wstring now;  // on the game thread the getters read the main value, just set
     if (Read(key, now) && !SameValue(v.type, now, value)) {
         if (g_rejected.insert(key).second)
             Log("%ls = %ls not taken (reads %ls, priority 0x%02x)", key.c_str(), value.c_str(), now.c_str(),
@@ -469,14 +467,24 @@ void Hold() {
     }
 }
 
+// Present thread: starts the search for the console manager (and the hook) once.
 void LiveOnPresent() {
-    Live state = g_live.load();
-    if (state == Live::Idle) {
-        g_live = Live::Searching;
-        std::thread(FindManager).detach();
-        return;
+    if (g_live.load() != Live::Idle) return;
+    g_live = Live::Searching;
+    std::thread(FindManager).detach();
+}
+
+// Game thread, once per frame, before the game's sinks run: all setting happens here.
+void GameTick() {
+    ++g_ticks;
+    if (g_live.load() != Live::Ready) return;
+    std::unique_lock<std::mutex> lock(g_state, std::try_to_lock);
+    if (!lock.owns_lock()) return;  // the overlay is busy: next frame
+    for (auto& [key, value] : g_pendingConsole) {
+        bool ok = SetVar(key, value);
+        Log("console: %ls = %ls %s", key.c_str(), value.c_str(), ok ? "set" : "NOT taken");
     }
-    if (state != Live::Ready) return;
+    g_pendingConsole.clear();
     static bool first = true;
     if (first) {  // the game's values of everything the options touch, for reference
         first = false;
@@ -505,11 +513,13 @@ void LiveOnPresent() {
         else
             Log("game user settings not found (%s build)", g_peak.knownBuild ? "known" : "unknown");
     }
-    if (g_dirty) {
-        g_dirty = false;
-        Apply();
-    }
+    if (g_dirty.exchange(false)) Apply();
     Hold();
+}
+
+void __fastcall HookedSinks(void* self) {
+    GameTick();
+    g_origSinks(self);  // then the game's sinks, which see what GameTick set
 }
 
 // The game's value of <name> as text: the one we saved if we're overriding it, else the current.
@@ -568,7 +578,7 @@ void OnPresent(command_queue*, swapchain* sc, const rect*, const rect*, uint32_t
     GetWindowThreadProcessId(fg, &pid);
     bool down = pid == GetCurrentProcessId() && (GetAsyncKeyState(kToggleHotkey) & 0x8000);
     if (down && !g_keyWasDown) {
-        g_enabled = !g_enabled;
+        g_enabled = !g_enabled.load();
         g_dirty = true;
         Log("tweaks %s (F8)", g_enabled ? "on" : "off");
     }
@@ -754,6 +764,8 @@ void DrawAdvanced() {
     ImGui::TextDisabled("Game settings: %s", live == Live::Ready    ? "connected"
                                              : live == Live::Failed ? g_liveError.c_str()
                                                                     : "connecting...");
+    ImGui::TextDisabled("Game thread: %s, %llu frames", g_hooked ? "reached" : "not reached",
+                        static_cast<unsigned long long>(g_ticks.load()));
     ImGui::TextDisabled("Holding %zu settings; put back %d times after they changed", g_applied.size(), g_reapplied);
     if (!g_rejected.empty()) {
         std::string list;
@@ -781,9 +793,8 @@ void DrawAdvanced() {
     ImGui::BeginDisabled(!v.var || !g_cvarValue[0]);
     if (ImGui::Button("Set once")) {
         std::wstring val(g_cvarValue, g_cvarValue + strlen(g_cvarValue));
-        bool ok = SetVar(name, val);
-        Log("console: %ls = %ls %s", name.c_str(), val.c_str(), ok ? "set" : "NOT taken");
-        g_cvarResult = ok ? "Set at console priority (the game's menu can't change it until restart)" : "Not taken";
+        g_pendingConsole.push_back({name, val});  // set by the game thread at its next frame
+        g_cvarResult = "Sent to the game (the log says whether it was taken)";
     }
     ImGui::EndDisabled();
     Help("For experiments: sets the value now, at console priority, like the game's console.\n"
@@ -798,6 +809,7 @@ void DrawAdvanced() {
 }
 
 void DrawOverlay(effect_runtime*) {
+    std::lock_guard<std::mutex> lock(g_state);  // the game thread skips a frame meanwhile
     ImGui::TextDisabled(FST_PRODUCT " " FST_VERSION);
     ImGui::SameLine();
     const Live live = g_live.load();
@@ -864,6 +876,7 @@ BOOL APIENTRY DllMain(HMODULE module, DWORD reason, LPVOID) {
             reshade::register_overlay(FST_PRODUCT, &DrawOverlay);
             break;
         case DLL_PROCESS_DETACH:
+            if (g_hooked) cvars::UnhookSinks(g_manager);
             reshade::unregister_addon(module);
             if (g_log) fclose(g_log);
             break;

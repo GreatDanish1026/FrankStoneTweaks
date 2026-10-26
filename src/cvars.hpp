@@ -1,7 +1,6 @@
 // Finds Unreal console variables in the running game and reads and sets them, for The Casting
-// of Frank Stone (UE 5.1.1). The interface follows DirectiveTweaks; how a set reaches the
-// renderer follows UntilDawnTweaks (also UE 5.1). Layouts were read from the linker map the
-// game ships (tools/mapsyms.py, docs/FINDINGS.md "Console variables").
+// of Frank Stone (UE 5.1.1). The interface follows DirectiveTweaks. Layouts were read from the
+// linker map the game ships (tools/mapsyms.py, docs/FINDINGS.md "Console variables").
 //
 // IConsoleManager::Singleton is found from the game's own code: cvar lookups load it with
 // `mov rcx, [rip+Singleton]` shortly before `lea rdx, [rip+L"r.ScreenPercentage"]`. A few
@@ -17,14 +16,18 @@
 //
 // What Set does in 5.1 (FConsoleVariable<int>::Set, exe 0x142adeb10):
 //   1. CanChange: refuses a SetBy priority lower than the last one (the flags' top byte).
-//   2. Stores the main value, then OnCVarChange copies it to the renderer's copy - but only on
-//      the game thread. ReShade's present runs elsewhere, so MirrorToRenderer does that copy.
-//      OnCVarChange also sets FConsoleManager::bCallAllConsoleVariableSinks (+0xe0), so the
-//      game thread runs the sinks (scalability, HDR tone curve) at its next tick.
+//   2. Stores the main value, then OnCVarChange passes it to the renderer - on the game thread
+//      as a render command, so it lands between frames; off the game thread not at all.
+//      It also sets FConsoleManager::bCallAllConsoleVariableSinks (+0xe0), so the sinks
+//      (scalability, HDR tone curve) run at the next CallAllConsoleVariableSinks.
 //   3. Records the priority and broadcasts the variable's change delegate.
-// There is no SetOnly flag in 5.1. The add-on sets at console priority (0x0a), above the
-// game's own code sets (0x09), so the menu can't undo a held value; letting go puts the game's
-// value and priority back (RestorePriority).
+// So every Set must run on the game thread: the add-on calls it from its own
+// CallAllConsoleVariableSinks (HookSinks, once per frame from FEngineLoop::Tick). 0.1.0 set from
+// ReShade's present thread and copied the value to the renderer itself, mid-frame; Lumen's
+// resource sizes changing inside a frame is the likely cause of the GPU crash it hit.
+// The add-on sets at console priority (0x0a), above the game's own code sets (0x09), so the
+// menu can't undo a held value; letting go puts the game's value and priority back
+// (RestorePriority).
 #pragma once
 
 #define WIN32_LEAN_AND_MEAN
@@ -139,7 +142,6 @@ inline bool HasModuleVtable(const uint8_t* base, const void* object) {
 }
 
 using FindFn = void*(__fastcall*)(void* self, const wchar_t* name, bool track);
-using PtrFn = void*(__fastcall*)(void* self);
 using IntFn = int32_t(__fastcall*)(void* self);
 using FloatFn = float(__fastcall*)(void* self);
 using SetFn = void(__fastcall*)(void* self, const wchar_t* value, uint32_t setBy);
@@ -216,27 +218,6 @@ inline Type GetType(const void* var) {
     return Type::Unknown;
 }
 
-inline void* CallPtr(void* var, uint32_t offset) {
-    __try {
-        return Virtual<PtrFn>(var, offset)(var);
-    } __except (EXCEPTION_EXECUTE_HANDLER) {
-        return nullptr;
-    }
-}
-
-// TConsoleVariableData<T>* for data cvars, null for Ref cvars. AsVariableBool/Int/Float come
-// right after the four IsVariable* slots.
-inline void* AsData(void* var, Type t) {
-    if (!g_isVariableBool) return nullptr;
-    const uint32_t asBool = g_isVariableBool + 0x20;
-    switch (t) {
-        case Type::Bool: return CallPtr(var, asBool);
-        case Type::Int: return CallPtr(var, asBool + 0x08);
-        case Type::Float: return CallPtr(var, asBool + 0x10);
-        default: return nullptr;
-    }
-}
-
 inline bool GetFloat(void* var, float& out) {
     __try {
         out = Virtual<FloatFn>(var, kGetFloat)(var);
@@ -288,55 +269,54 @@ inline bool RestorePriority(void* var, uint32_t priority) {
     return SafeCopy(static_cast<uint8_t*>(var) + kFlags, &f, 4);
 }
 
-// Where Set keeps the main value and where the renderer reads it.
-struct Storage {
-    Type type = Type::Unknown;
-    bool ref = false;
-    uint8_t* render = nullptr;
-    const uint8_t* main = nullptr;
-    size_t size = 0;
-};
-
-// Data cvar: main value at the TConsoleVariableData, renderer's copy right after it (+4 for
-// int/float, +1 for bool). Ref cvar: main value at +0x50, pointer to the global the renderer
-// reads at +0x48 (both as in Until Dawn's 5.1 build).
-inline bool GetStorage(void* var, Storage& out) {
-    out = {};
-    out.type = GetType(var);
-    if (out.type != Type::Bool && out.type != Type::Int && out.type != Type::Float) return false;
-    out.size = out.type == Type::Bool ? 1 : 4;
-    auto obj = static_cast<uint8_t*>(var);
-    if (void* data = AsData(var, out.type)) {
-        out.main = static_cast<uint8_t*>(data);
-        out.render = static_cast<uint8_t*>(data) + out.size;
-        return true;
-    }
-    uint8_t* global = nullptr;
-    if (!SafeCopy(&global, obj + 0x48, 8) || !global) return false;
-    out.ref = true;
-    out.main = obj + 0x50;
-    out.render = global;
-    return true;
-}
-
-// Copies the main value to where the renderer reads it (what OnCVarChange does on the game
-// thread). An aligned store, so the render thread sees old or new, not a mix.
-inline bool MirrorToRenderer(void* var) {
-    Storage s;
-    if (!GetStorage(var, s)) return false;
-    uint8_t value[4];
-    return SafeCopy(value, s.main, s.size) && SafeCopy(s.render, value, s.size);
-}
-
-// Sets at <setBy> priority and mirrors the value to the renderer. False if it faulted.
+// Sets at <setBy> priority. Call it on the game thread only (see the header). False if it
+// faulted.
 inline bool Set(void* var, const wchar_t* value, uint32_t setBy = kSetByConsole) {
     __try {
         Virtual<SetFn>(var, kSet)(var, value, setBy);
+        return true;
     } __except (EXCEPTION_EXECUTE_HANDLER) {
         return false;
     }
-    MirrorToRenderer(var);
+}
+
+// ------------------------------------------------ running on the game thread
+//
+// FEngineLoop::Tick calls IConsoleManager::CallAllConsoleVariableSinks (vtable +0x50) through the
+// manager's vtable once per frame, on the game thread. HookSinks gives the manager a copy of its
+// vtable with that slot pointing at <hook>; the hook does its work and then calls the original
+// (returned in *original). The copy keeps the RTTI pointer in front of it. Nothing in the
+// game's code is changed, and UnhookSinks puts the original vtable back.
+constexpr uint32_t kCallAllConsoleVariableSinks = 0x50;
+using SinksFn = void(__fastcall*)(void* self);
+
+inline void* g_vtableCopy[1 + 256];
+inline void** g_vtableOriginal = nullptr;
+
+inline bool HookSinks(const uint8_t* base, void* manager, SinksFn hook, SinksFn* original) {
+    Section text;
+    void** vt = nullptr;
+    if (!FindSection(base, ".text", text) || !SafeCopy(&vt, manager, 8) || !vt) return false;
+    size_t n = 0;
+    while (n < 256) {  // slots up to the first one that isn't code
+        const uint8_t* fn = nullptr;
+        if (!SafeCopy(&fn, vt + n, 8) || fn < text.begin || fn >= text.begin + text.size) break;
+        ++n;
+    }
+    const size_t slot = kCallAllConsoleVariableSinks / 8;
+    if (n <= slot || !SafeCopy(&g_vtableCopy[0], vt - 1, 8)) return false;
+    memcpy(&g_vtableCopy[1], vt, n * 8);
+    *original = reinterpret_cast<SinksFn>(vt[slot]);
+    g_vtableCopy[1 + slot] = reinterpret_cast<void*>(hook);
+    g_vtableOriginal = vt;
+    InterlockedExchangePointer(reinterpret_cast<PVOID volatile*>(manager), &g_vtableCopy[1]);
     return true;
+}
+
+inline void UnhookSinks(void* manager) {
+    if (manager && g_vtableOriginal)
+        InterlockedExchangePointer(reinterpret_cast<PVOID volatile*>(manager), g_vtableOriginal);
+    g_vtableOriginal = nullptr;
 }
 
 }  // namespace cvars

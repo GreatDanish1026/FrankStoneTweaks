@@ -76,11 +76,29 @@ From `??_7FConsoleManager@@6B@` and `??_7?$FConsoleVariable@H@@6B@`:
   on the game thread** and sets the sink flag unless SetBy has bit 0x10000; then the flags get
   the new priority and the change delegate (`+0x20`, count at `+0x28`) is broadcast.
 
-So the add-on: sets at console priority 0x0a (the menu's 0x09 sets are then refused, so menu
-changes can't undo a held value), copies the value to the renderer itself
-(`MirrorToRenderer`, the Until Dawn method), and for variables with change callbacks writes the
-value straight into storage and raises the sink flag (the callbacks would otherwise run on the
-present thread). Letting go sets the game's value back and restores its priority byte.
+So every `Set` has to run on the game thread. Since 0.1.1 the add-on gives the console manager a
+copy of its vtable whose `CallAllConsoleVariableSinks` slot (+0x50) runs the add-on's work first;
+`FEngineLoop::Tick` (0x140c06d6c) calls that slot once per frame on the game thread. Values then
+reach the renderer as render commands, between frames, and change callbacks (the `sg.*`
+groups) run where they expect to. It sets at console priority 0x0a (the menu's 0x09 sets are
+then refused, so menu changes can't undo a held value); letting go sets the game's value back
+and restores its priority byte.
+
+### 0.1.0 crash and hang (2026-10-26)
+
+0.1.0 set values from ReShade's present thread and copied them to the renderer's copy itself
+(the Until Dawn method), mid-frame. Two runs with Cinematic GI and reflections and RT shadows:
+
+- Run 1 crashed at 18:40:03 (crash report `UECC-Windows-79FA5CB2...`): `Streamline/DLSSG present
+  failed ... DXGI_ERROR_INVALID_CALL` (CrashType GPUCrash); the RHI thread was in
+  `FD3D12Viewport::PresentChecked`. `tools/dumpstacks.py` lists every thread of the minidump.
+- Run 2 froze right after `r.RayTracing.Culling=0` was set; no crash report, killed by hand.
+
+Lumen's probe counts and resolutions size GPU resources; changing them mid-frame can leave one
+pass using the old size and the next the new, which can fault the GPU. Hence the move to the
+game thread. `r.RayTracing.Culling=0` puts every object of the streamed level (foliage
+included) into the ray tracing scene, enough on its own for very long frames; the option now
+offers only mode 1 (cull behind the camera only). Game's mode is 3 (distance OR angle, both sides).
 
 ## HDR
 

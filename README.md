@@ -1,4 +1,4 @@
-# FrankStoneTweaks 0.1.0
+# FrankStoneTweaks 0.1.1
 
 Graphics add-on for **The Casting of Frank Stone** (PC, Steam), for ReShade with add-on
 support. Raises the game's ray tracing past what its menu offers and sets the HDR peak
@@ -10,7 +10,8 @@ brightness, live, from an in-game overlay.
   - *Reflections: Cinematic*: the game's unused tier above Ultra. Reflections are lit
     properly where the ray hits, and glass and water get ray traced reflections too.
   - *Ray traced shadows*: the engine supports them, but the game ships with them off.
-  - *Ray tracing range*: keeps distant and off-screen objects in the ray tracing scene.
+  - *Ray tracing range: In view*: keeps everything in front of the camera in the ray tracing
+    scene (the game also drops distant or small objects in view).
 - **HDR**: set the peak brightness. The game always builds its tone curve for 1000 nits. Its
   own HDR sliders (brightness, black level, UI) still apply.
 - **F8** switches every tweak off and on, to compare.
