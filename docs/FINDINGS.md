@@ -147,3 +147,9 @@ No way to see the hung pass: logging is compiled out (`LogD3D12RHI` is an `FNoLo
 and the shipped Aftermath dump writer (`AftermathGpuCrashDumpCallback`) only writes Vulkan dumps.
 Bisecting instead: next run without RT shadows (never enabled by the game, so untested on its
 content), then without the Cinematic reflections (hit lighting).
+
+Result: with RT shadows off (Cinematic GI and reflections and the 3700-nit peak on) the game
+played without hanging, so RT shadows with all their features cause the hang. 0.1.3 drops that
+choice and offers two untested lighter ones: `r.RayTracing.Shadows.EnableHairVoxel=0` (no
+shadow rays through the strand hair voxels; the game uses strand hair), and that plus
+`r.RayTracing.Shadows.EnableMaterials=0` (no any-hit material shaders; masked surfaces opaque).

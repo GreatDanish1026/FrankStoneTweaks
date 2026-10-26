@@ -150,9 +150,20 @@ std::vector<Option> g_options = {
      "object, softer further away) and no shadow-map blockiness or light leaking. The\n"
      "engine supports them but the game ships with them off. Turning them on makes the\n"
      "game build its ray traced shadow shaders first: expect several seconds of stutter\n"
-     "(once per game start).",
+     "(once per game start).\n\n"
+     "EXPERIMENTAL. With every shadow feature on (0.1.2's \"On\") the GPU hung within\n"
+     "about a minute. No hair tracing skips tracing shadow rays through the characters'\n"
+     "strand hair. Simplest also treats leaves, fences and other cut-out surfaces as solid\n"
+     "(no material shaders on shadow rays): blockier foliage shadows. If the game hangs,\n"
+     "set this back to Game.",
      L"r.RayTracing.Shadows",
-     {{"Game", 0, {}}, {"On", 1, {{L"r.RayTracing.Shadows", L"1"}}}}},
+     {{"Game", 0, {}},
+      {"On, no hair tracing", 2,
+       {{L"r.RayTracing.Shadows", L"1"}, {L"r.RayTracing.Shadows.EnableHairVoxel", L"0"}}},
+      {"On, simplest", 3,
+       {{L"r.RayTracing.Shadows", L"1"},
+        {L"r.RayTracing.Shadows.EnableHairVoxel", L"0"},
+        {L"r.RayTracing.Shadows.EnableMaterials", L"0"}}}}},
     // No ray tracing range option: changing r.RayTracing.Culling while the game runs locked it
     // up, with 0 (0.1.0) and with 1 (0.1.1, set on the game thread). docs/FINDINGS.md.
 };
