@@ -185,3 +185,9 @@ recursive mutex, since the present callback and the overlay share it on one thre
 First measurement (2026-10-26 19:22, RTX 5080, 4K, DLSS Quality, Frame Generation, menu Ultra with
 Ray Tracing on, one scene, camera options on): Game 6.93 ms (144.3 fps), Ultra+ 7.43 ms (134.5 fps,
 +7%), Cinematic 11.90 ms (84.0 fps, +72%). Which Cinematic option costs most isn't known yet.
+
+The user turned options off one by one under Cinematic: Cinematic GI is the big cost (its
+`DownsampleFactor` 16 -> 8 gives 4x the screen probes, `TracingOctahedronResolution` 8 -> 16 4x
+the rays each). 0.4.0 adds GI "High" (the cheap Cine keys: radiance cache budget 1000 and the
+translucency volume values, no probe spacing or octahedron change) and a "High" preset
+(Cinematic with GI High). Not measured yet.

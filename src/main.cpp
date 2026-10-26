@@ -121,13 +121,22 @@ struct Option {
 
 std::vector<Option> g_options = {
     {"Ray tracing", "Global illumination", "CineGi", "Global illumination",
-     "Lumen's bounce lighting. Cinematic is the game's own unused tier above Ultra:\n"
-     "lighting probes every 8 pixels instead of 16 (4x as many), twice the directions\n"
-     "traced per probe, over 3x the probe budget, finer lighting in fog and on hair and\n"
-     "glass. Softer, more stable indirect light with less blotching and leaking.\n"
+     "Lumen's bounce lighting.\n"
+     "High: over 3x the lighting cache's update budget (bounce light keeps up when the\n"
+     "camera moves, with less lag and pop-in) and the Cinematic lighting in fog and on\n"
+     "glass and hair. Keeps the game's probe spacing, so it costs little.\n"
+     "Cinematic: the game's own unused tier above Ultra. High plus lighting probes every\n"
+     "8 pixels instead of 16 and twice the directions per probe, about 16x the probe\n"
+     "tracing: softer, more stable indirect light, but in one scene it cost about 60% of\n"
+     "the frame rate at 4K. For photo mode or screenshots.\n"
      "Applies with or without the menu's Ray Tracing.",
      L"r.Lumen.ScreenProbeGather.DownsampleFactor",
      {{"Game", 0, {}},
+      {"High", 2,
+       {{L"r.Lumen.ScreenProbeGather.RadianceCache.NumProbesToTraceBudget", L"1000"},
+        {L"r.Lumen.TranslucencyVolume.TracingOctahedronResolution", L"4"},
+        {L"r.Lumen.TranslucencyVolume.RadianceCache.ProbeResolution", L"16"},
+        {L"r.Lumen.TranslucencyVolume.RadianceCache.NumProbesToTraceBudget", L"1000"}}},
       {"Cinematic", 1,
        {{L"r.Lumen.ScreenProbeGather.RadianceCache.NumProbesToTraceBudget", L"1000"},
         {L"r.Lumen.ScreenProbeGather.DownsampleFactor", L"8"},
@@ -657,6 +666,13 @@ const QualityPreset kPresets[] = {
      "Ray tracing stays as the menu sets it.",
      {{"TexturePool", 6144}, {"Anisotropy", 16}, {"ViewDistance", 2}, {"FogCells", 6}, {"SoftShadows", 1},
       {"HairDetail", 1}, {"SkyDetail", 1}}},
+    {"High", "",
+     "Cinematic without its costly global illumination: High GI (bigger lighting cache\n"
+     "budget, Cinematic fog, glass and hair lighting), the game's Cinematic reflections,\n"
+     "8 GB texture memory, 16x filtering, Cinematic (10x) view distance, the finest fog, and\n"
+     "the Cinematic lamp soft shadows, hair and sky. Not measured yet.",
+     {{"CineGi", 2}, {"CineReflections", 1}, {"TexturePool", 8192}, {"Anisotropy", 16}, {"ViewDistance", 10},
+      {"FogCells", 4}, {"SoftShadows", 1}, {"HairDetail", 1}, {"SkyDetail", 1}}},
     {"Cinematic", "about 70% slower",
      "Everything at its highest: the game's Cinematic global illumination and reflections, 8 GB\n"
      "texture memory, 16x filtering, Cinematic (10x) view distance, the finest fog, and the\n"
@@ -1098,7 +1114,8 @@ void DrawOverlay(effect_runtime*) {
     }
     ImGui::EndDisabled();
     Help("Sets the Ray tracing and Detail options together. Ultra+ costs about 7%, Cinematic\n"
-         "about 70% (RTX 5080, 4K, DLSS Quality, Frame Generation, one scene). Camera effects\n"
+         "about 70% (RTX 5080, 4K, DLSS Quality, Frame Generation, one scene); High is Cinematic\n"
+         "without its costly global illumination (not measured yet). Camera effects\n"
          "and HDR are left as they are. Changing an option afterwards shows Custom.\n"
          "Measure preset costs shows what each one costs on your PC.");
 
@@ -1113,7 +1130,7 @@ void DrawOverlay(effect_runtime*) {
         ImGui::BeginDisabled(live != Live::Ready || !g_enabled);
         if (ImGui::SmallButton("Measure preset costs")) StartMeasure();
         ImGui::EndDisabled();
-        Help("Runs Game, Ultra+ and Cinematic for 14 s each (6 s to settle, 8 s measured) and\n"
+        Help("Runs every preset for 14 s each (6 s to settle, 8 s measured, about a minute) and\n"
              "shows how much longer each frame takes than with Game. Stand still in a typical\n"
              "scene and leave the mouse alone; the overlay can stay open. Your options come back\n"
              "afterwards. With Frame Generation on, the frame rate is the displayed one.");
