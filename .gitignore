@@ -1,0 +1,7 @@
+bin/
+*.exe
+*.dll
+*.addon64
+*.log
+__pycache__/
+mapsyms.pickle
