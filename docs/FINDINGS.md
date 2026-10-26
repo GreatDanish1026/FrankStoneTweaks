@@ -153,3 +153,7 @@ played without hanging, so RT shadows with all their features cause the hang. 0.
 choice and offers two untested lighter ones: `r.RayTracing.Shadows.EnableHairVoxel=0` (no
 shadow rays through the strand hair voxels; the game uses strand hair), and that plus
 `r.RayTracing.Shadows.EnableMaterials=0` (no any-hit material shaders; masked surfaces opaque).
+
+"On, no hair tracing" froze the game as well (no crash report). 0.1.4 removes RT shadows: the
+user chose that over testing "simplest". RT shadows were never enabled by Supermassive and
+don't hold up on this game's content.

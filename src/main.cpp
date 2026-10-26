@@ -45,7 +45,7 @@
 
 extern "C" __declspec(dllexport) const char* NAME = FST_PRODUCT;
 extern "C" __declspec(dllexport) const char* DESCRIPTION =
-    "Cinematic ray tracing, ray traced shadows and HDR peak brightness for " FST_GAME ", live from the overlay.";
+    "Cinematic ray tracing and HDR peak brightness for " FST_GAME ", live from the overlay.";
 
 namespace {
 
@@ -145,25 +145,8 @@ std::vector<Option> g_options = {
       {"Cinematic", 1,
        {{L"r.Lumen.HardwareRayTracing.LightingMode", L"1"},
         {L"r.Lumen.TranslucencyReflections.FrontLayer.Enable", L"1"}}}}},
-    {"Ray tracing", "Shadows", "RtShadows", "Ray traced shadows",
-     "Shadows from ray tracing instead of shadow maps: contact-hardening (sharp near the\n"
-     "object, softer further away) and no shadow-map blockiness or light leaking. The\n"
-     "engine supports them but the game ships with them off. Turning them on makes the\n"
-     "game build its ray traced shadow shaders first: expect several seconds of stutter\n"
-     "(once per game start).\n\n"
-     "EXPERIMENTAL. With every shadow feature on (0.1.2's \"On\") the GPU hung within\n"
-     "about a minute. No hair tracing skips tracing shadow rays through the characters'\n"
-     "strand hair. Simplest also treats leaves, fences and other cut-out surfaces as solid\n"
-     "(no material shaders on shadow rays): blockier foliage shadows. If the game hangs,\n"
-     "set this back to Game.",
-     L"r.RayTracing.Shadows",
-     {{"Game", 0, {}},
-      {"On, no hair tracing", 2,
-       {{L"r.RayTracing.Shadows", L"1"}, {L"r.RayTracing.Shadows.EnableHairVoxel", L"0"}}},
-      {"On, simplest", 3,
-       {{L"r.RayTracing.Shadows", L"1"},
-        {L"r.RayTracing.Shadows.EnableHairVoxel", L"0"},
-        {L"r.RayTracing.Shadows.EnableMaterials", L"0"}}}}},
+    // No ray traced shadows: r.RayTracing.Shadows=1 hung the GPU within minutes, with all its
+    // features, without hair voxel tracing too (0.1.2, 0.1.3). docs/FINDINGS.md.
     // No ray tracing range option: changing r.RayTracing.Culling while the game runs locked it
     // up, with 0 (0.1.0) and with 1 (0.1.1, set on the game thread). docs/FINDINGS.md.
 };
@@ -730,10 +713,10 @@ void DrawHdr() {
     }
 }
 
-char g_cvarName[128] = "r.RayTracing.Shadows";
+char g_cvarName[128] = "r.Lumen.ScreenProbeGather.DownsampleFactor";
 char g_cvarValue[64] = "";
 std::string g_cvarResult;
-char g_dumpPrefix[64] = "r.RayTracing.Shadows";
+char g_dumpPrefix[64] = "r.Lumen.";
 
 // Writes every console variable whose name starts with <prefix> to the log, with its value.
 // The names come from the game's read-only data (UTF-16 strings), so nothing is enumerated.
