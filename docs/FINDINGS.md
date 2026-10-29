@@ -196,3 +196,23 @@ Second measurement (2026-10-26 19:33, same setup and scene): Game 6.84 ms (146.2
 (135.4, +8%), Cinematic-lite 7.77 (128.8, +14%), Cinematic 11.54 (86.7, +69%). Cinematic-lite adds
 Cinematic reflections, 10x view distance and 4 px fog to Ultra+ for about 6% more; Cinematic GI
 alone is the other ~50%.
+
+## Stutter (0.5.0)
+
+- The game ships a stable pipeline cache (`SMG037UE5_PCD3D_SM6.stable.upipelinecache`,
+  `r.ShaderPipelineCache.Enabled=1` from DefaultDeviceProfiles.ini) and precompiles it at startup:
+  `UUIHelperSMG037::GetNumPrecompilesRemaining` (its shader screen) calls
+  `FShaderPipelineCache::NumPrecompilesRemaining` (0x143ecf1f0, thread-aware; the add-on calls
+  it on the game thread once a second and logs when it reaches 0).
+- What that cache lacks compiles on first draw. Ray tracing pipelines aren't in it at all in
+  5.1 (RT shadows stalled for seconds when turned on).
+- 5.1's PSO precaching is off: `r.PSOPrecaching` (`GPSOPrecaching` 0x148d14f40),
+  `r.PSOPrecache.Components` (`GPSOPrecacheComponents`, used when precaching is on),
+  `r.PSOPrecache.Resources` (default 0), `r.SkipDrawOnPSOPrecaching` (`GSkipDrawOnPSOPrecaching`,
+  skip a mesh draw while its PSO compiles). `PipelineStateCache::IsPSOPrecachingEnabled`
+  (0x143e190e0) and `IsComponentPSOPrecachingEnabled` (0x144ced0f0) read the globals on every
+  call, so enabling at the title screen covers levels loaded afterwards.
+- Other knobs not touched yet: level streaming budgets (`s.LevelStreaming*`,
+  `s.AsyncLoadingTimeLimit`), GC (`gc.TimeBetweenPurgingPendingKillObjects=61.1`), Lumen card
+  captures (`r.LumenScene.SurfaceCache.CardCapturesPerFrame`). The hitch meter (frames over
+  50/100/250 ms, pauses over 500 ms apart) is there to tell which, if any, matters.

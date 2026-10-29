@@ -225,6 +225,26 @@ std::vector<Option> g_options = {
         {L"r.SkyAtmosphere.TransmittanceLUT.SampleCount", L"30"},
         {L"r.SkyAtmosphere.MultiScatteringLUT.SampleCount", L"20"}}}}},
 
+    // ------------------------------------------------ stutter (not in presets)
+    // The game precompiles its shipped pipeline cache at startup (UUIHelperSMG037::
+    // GetNumPrecompilesRemaining drives its shader screen); what that cache lacks compiles the
+    // first time it is drawn. 5.1's experimental PSO precaching compiles each component's
+    // pipelines while it loads instead. IsPSOPrecachingEnabled and IsComponentPSOPrecachingEnabled
+    // read their globals on every call, so turning it on at the title screen covers every level
+    // loaded afterwards. docs/FINDINGS.md.
+    {"Stutter", "Shaders", "PsoPrecache", "Shader precaching",
+     "Experimental. Compiles the shaders each object needs while its level loads, instead\n"
+     "of the first time the object comes on screen (a hitch). Takes effect for areas loaded\n"
+     "after it is turned on: load a save or chapter afterwards.\n"
+     "Skip unready draws also leaves an object out for a frame or two when its shaders\n"
+     "still aren't ready, instead of waiting for them: a brief pop-in instead of a hitch.\n"
+     "Compare with the hitch meter below.",
+     L"r.PSOPrecaching",
+     {{"Game", 0, {}},
+      {"On", 1, {{L"r.PSOPrecaching", L"1"}, {L"r.PSOPrecache.Components", L"1"}}},
+      {"On, skip unready draws", 2,
+       {{L"r.PSOPrecaching", L"1"}, {L"r.PSOPrecache.Components", L"1"}, {L"r.SkipDrawOnPSOPrecaching", L"1"}}}}},
+
     // ------------------------------------------------ camera effects the menu can't turn off
     // The menu has switches for motion blur and film grain, so those aren't here. Its depth of
     // field setting only offers Normal and Ultra.
@@ -584,9 +604,29 @@ void LiveOnPresent() {
     std::thread(FindManager).detach();
 }
 
+// Pipeline cache precompiles still to do: FShaderPipelineCache::NumPrecompilesRemaining (exe
+// 0x143ecf1f0, what the game's shader screen reads). It checks which thread it's on, so it's
+// called from the game thread, once a second, and only on the tested build. -1 = unknown.
+constexpr uint32_t kNumPrecompilesRemainingRva = 0x3ecf1f0;
+std::atomic<int> g_precompiles{-1};
+
+void UpdatePrecompiles() {
+    static ULONGLONG last = 0;
+    ULONGLONG now = GetTickCount64();
+    if (!g_peak.knownBuild || now - last < 1000) return;
+    last = now;
+    using Fn = uint32_t (*)();
+    auto fn = reinterpret_cast<Fn>(reinterpret_cast<const uint8_t*>(GetModuleHandleW(nullptr)) + kNumPrecompilesRemainingRva);
+    int n = static_cast<int>(fn());
+    int before = g_precompiles.exchange(n);
+    if (before < 0 || (before > 0 && n == 0) || (before == 0 && n > 0))
+        Log("shader pipeline cache: %d precompiles remaining", n);
+}
+
 // Game thread, once per frame, before the game's sinks run: all setting happens here.
 void GameTick() {
     ++g_ticks;
+    UpdatePrecompiles();
     if (g_live.load() != Live::Ready) return;
     std::unique_lock<std::recursive_mutex> lock(g_state, std::try_to_lock);
     if (!lock.owns_lock()) return;  // the overlay is busy: next frame
@@ -803,12 +843,60 @@ void MeasureOnFrame(float ms, bool focused) {
     FinishMeasure("done");
 }
 
+// ---------------------------------------------------------------- hitch meter
+//
+// Long present intervals while the game has focus: a hitch on screen whatever caused it
+// (a shader compiling, streaming, garbage collection). Counted from the add-on's start or the
+// last Reset; each hitch of 100 ms or more is logged (at most one a second), and a summary
+// every minute that had any. Intervals over 500 ms are counted apart as pauses (loading
+// screens, menus). Present thread; shared with the overlay under g_state.
+
+struct Hitches {
+    ULONGLONG since = 0;
+    uint64_t frames = 0;
+    int over50 = 0, over100 = 0, over250 = 0, pauses = 0;
+    float worst = 0;  // worst hitch under 500 ms
+    ULONGLONG lastLog = 0, minuteStart = 0;
+    int minute50 = 0, minute100 = 0;
+} g_hitch;
+
+void HitchOnFrame(float ms) {
+    std::lock_guard<std::recursive_mutex> lock(g_state);
+    ULONGLONG now = GetTickCount64();
+    if (!g_hitch.since) g_hitch.since = g_hitch.minuteStart = now;
+    ++g_hitch.frames;
+    if (ms > 500) {
+        ++g_hitch.pauses;
+    } else if (ms >= 50) {
+        ++g_hitch.over50, ++g_hitch.minute50;
+        if (ms >= 100) ++g_hitch.over100, ++g_hitch.minute100;
+        if (ms >= 250) ++g_hitch.over250;
+        g_hitch.worst = std::max(g_hitch.worst, ms);
+        if (ms >= 100 && now - g_hitch.lastLog >= 1000) {
+            g_hitch.lastLog = now;
+            Log("hitch: %.0f ms (shader precaching %s)", ms, ReadInt(L"r.PSOPrecaching") > 0 ? "on" : "off");
+        }
+    }
+    if (now - g_hitch.minuteStart >= 60000) {
+        if (g_hitch.minute50)
+            Log("hitches in the last minute: %d over 50 ms, %d over 100 ms", g_hitch.minute50, g_hitch.minute100);
+        g_hitch.minute50 = g_hitch.minute100 = 0;
+        g_hitch.minuteStart = now;
+    }
+}
+
+void ResetHitches() {
+    g_hitch = {};
+    Log("hitch meter reset (shader precaching %s)", ReadInt(L"r.PSOPrecaching") > 0 ? "on" : "off");
+}
+
 void FrameOnPresent(bool focused) {
     static int64_t last = 0;
     LARGE_INTEGER t;
     QueryPerformanceCounter(&t);
     float ms = last ? static_cast<float>((t.QuadPart - last) * 1000.0 / g_qpcFreq) : 0;
     last = t.QuadPart;
+    if (ms && focused) HitchOnFrame(ms);
     if (!ms || !focused || ms > 500) {
         if (!focused) MeasureOnFrame(ms, false);
         return;
@@ -930,6 +1018,36 @@ void DrawRayTracingStatus() {
         ImGui::TextColored(kGood, "Ray Tracing is on in the game's menu.");
     else
         ImGui::TextColored(kWarn, "Ray Tracing is off in the game's menu: reflections need it on.");
+}
+
+// The Stutter tab: the precaching option, the hitch meter and the startup shader compile.
+bool DrawStutter() {
+    bool changed = DrawTab("Stutter");
+
+    ImGui::SeparatorText("Hitch meter");
+    if (g_hitch.since) {
+        double minutes = (GetTickCount64() - g_hitch.since) / 60000.0;
+        ImGui::Text("Last %.1f min: %d hitches over 50 ms, %d over 100 ms, %d over 250 ms", minutes, g_hitch.over50,
+                    g_hitch.over100, g_hitch.over250);
+        if (minutes >= 0.5)
+            ImGui::TextDisabled("%.1f per minute over 50 ms. Worst %.0f ms. Pauses over 0.5 s (loading, menus): %d",
+                                g_hitch.over50 / minutes, g_hitch.worst, g_hitch.pauses);
+    }
+    if (ImGui::SmallButton("Reset")) ResetHitches();
+    Help("Counts frames that took 50 ms or longer while the game had focus, whatever the\n"
+         "cause. To compare: play the same stretch with the option at Game, Reset, then with\n"
+         "it on (after loading a save), and compare hitches per minute. Each hitch of 100 ms\n"
+         "or more is also written to FrankStoneTweaks.log with its time.");
+
+    ImGui::SeparatorText("The game's startup shader compile");
+    int remaining = g_precompiles.load();
+    if (remaining < 0)
+        ImGui::TextDisabled(g_peak.knownBuild ? "Not read yet." : "Unknown on this game version.");
+    else if (remaining == 0)
+        ImGui::TextColored(kGood, "Finished: every shader in the game's shipped cache is compiled.");
+    else
+        ImGui::TextColored(kWarn, "%d shaders still compiling in the background: expect hitches until done.", remaining);
+    return changed;
 }
 
 void DrawHdr() {
@@ -1167,6 +1285,10 @@ void DrawOverlay(effect_runtime*) {
         if (ImGui::BeginTabItem("Camera")) {
             ImGui::TextDisabled("Motion blur and film grain are switches in the game's own menu.");
             changed |= DrawTab("Camera");
+            ImGui::EndTabItem();
+        }
+        if (ImGui::BeginTabItem("Stutter")) {
+            changed |= DrawStutter();
             ImGui::EndTabItem();
         }
         if (ImGui::BeginTabItem("HDR")) {
