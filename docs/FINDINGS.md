@@ -258,3 +258,13 @@ Ultra+ 9.43 (106.0, +5%), Cinematic-lite 11.72 (85.3, +31%), Cinematic 15.61 (64
 Cinematic-lite went from +14% to +31%: Very high GI (about +8-10%) and the reflection options
 (roughness 0.6, no screen traces). Labels: Ultra+ 5-8%, Cinematic-lite about 30%, Cinematic
 about 75% (0.7.4).
+
+## RTX Dynamic Vibrance (0.8.0)
+
+Streamline DeepDVC ships with the DLSS plugin (`nvngx_deepdvc.dll` 1.0.1, `sl.deepdvc.dll`).
+Cvars: `r.Streamline.DeepDVC.Enable` (0 off, 1 always on), `.Intensity` [0..1] (default 0.5, 0
+disables), `.SaturationBoost` [0..1] (default 0.5, only at higher intensity).
+`IsDeepDVCSupportedByRHI` returns true for D3D12. `GStreamlineDeepDVCSupport` (0x1487ff1e8, int,
+1 in .data until `QueryStreamlineDeepDVCSupport` runs; it writes 2 for non-NVIDIA and 6 when the
+RHI says no) is shown under the Camera tab. Choices: Subtle 0.3/0.3, NVIDIA default 0.5/0.5,
+Strong 0.8/0.7. Not tried in game yet; HDR behaviour unknown.

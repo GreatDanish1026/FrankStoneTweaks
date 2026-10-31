@@ -309,6 +309,26 @@ std::vector<Option> g_options = {
      "Supermassive's screen-space fog scattering: bright lights bleed a soft glow into\n"
      "fog, which also softens the whole image in foggy scenes.",
      L"r.SSFS", {{"Game", 0, {}}, {"Off", 1, {{L"r.SSFS", L"0"}}}}},
+    // NVIDIA's Streamline DeepDVC, shipped with the game's DLSS plugin and never enabled:
+    // r.Streamline.DeepDVC.Enable (0 off, 1 on), .Intensity [0..1] (default 0.5; 0 disables it),
+    // .SaturationBoost [0..1] (default 0.5, only at higher intensity).
+    {"Camera", "Colour", "DynamicVibrance", "RTX Dynamic Vibrance",
+     "NVIDIA's AI colour filter (shipped with the game's DLSS files, never switched on):\n"
+     "boosts colour where the scene allows while keeping skin tones and already-strong\n"
+     "colours in check. A matter of taste: it works against the game's muted horror\n"
+     "grading, and it's made mostly with SDR in mind, so check how it looks in HDR.\n"
+     "Needs an RTX card; the status below says whether the game could start it.",
+     L"r.Streamline.DeepDVC.Enable",
+     {{"Game", 0, {}},
+      {"Subtle", 1,
+       {{L"r.Streamline.DeepDVC.Enable", L"1"}, {L"r.Streamline.DeepDVC.Intensity", L"0.3"},
+        {L"r.Streamline.DeepDVC.SaturationBoost", L"0.3"}}},
+      {"NVIDIA default", 2,
+       {{L"r.Streamline.DeepDVC.Enable", L"1"}, {L"r.Streamline.DeepDVC.Intensity", L"0.5"},
+        {L"r.Streamline.DeepDVC.SaturationBoost", L"0.5"}}},
+      {"Strong", 3,
+       {{L"r.Streamline.DeepDVC.Enable", L"1"}, {L"r.Streamline.DeepDVC.Intensity", L"0.8"},
+        {L"r.Streamline.DeepDVC.SaturationBoost", L"0.7"}}}}},
     {"Camera", "Image", "Sharpening", "Sharpening",
      "The game always sharpens the final image (strength 1.5), on top of DLSS or TSR,\n"
      "which can leave halos on edges and crawl on fine detail.",
@@ -1127,6 +1147,31 @@ void DrawRayTracingStatus() {
         ImGui::TextColored(kWarn, "Ray Tracing is off in the game's menu: reflections need it on.");
 }
 
+// Whether Streamline could start Dynamic Vibrance: GStreamlineDeepDVCSupport (exe 0x1487ff1e8,
+// an EStreamlineFeatureSupport int set by QueryStreamlineDeepDVCSupport; 1 in the exe's data
+// until it runs), tested build only. Order confirmed by the query's own writes: 2 = not an NVIDIA
+// device, 6 = not supported by the RHI. Values are small, so the low byte is read.
+void DrawVibranceStatus() {
+    if (!g_peak.knownBuild) return;
+    uint8_t support = 0xff;
+    cvars::SafeCopy(&support, reinterpret_cast<const uint8_t*>(GetModuleHandleW(nullptr)) + 0x87ff1e8, 1);
+    static const char* const kNames[] = {"supported",
+                                         "not supported, or not checked by the game yet",
+                                         "not supported by this graphics card",
+                                         "needs a newer NVIDIA driver",
+                                         "needs a newer Windows",
+                                         "needs hardware-accelerated GPU scheduling on in Windows",
+                                         "not supported by the game's renderer",
+                                         "not built into the game",
+                                         "blocked by a capture tool"};
+    const char* name = support < 9 ? kNames[support] : "unknown";
+    ImGui::Spacing();
+    if (support == 0)
+        ImGui::TextDisabled("RTX Dynamic Vibrance: supported on this PC.");
+    else
+        ImGui::TextColored(kWarn, "RTX Dynamic Vibrance: %s (code %u).", name, support);
+}
+
 // The Stutter tab: the precaching option, the hitch meter and the startup shader compile.
 bool DrawStutter() {
     bool changed = DrawTab("Stutter");
@@ -1394,6 +1439,7 @@ void DrawOverlay(effect_runtime*) {
         if (ImGui::BeginTabItem("Camera")) {
             ImGui::TextDisabled("Motion blur and film grain are switches in the game's own menu.");
             changed |= DrawTab("Camera");
+            DrawVibranceStatus();
             ImGui::EndTabItem();
         }
         if (ImGui::BeginTabItem("Stutter")) {
