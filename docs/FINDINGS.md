@@ -245,3 +245,6 @@ minute even when there were no hitches, so runs line up.
 GI measured with the per-option button (2026-10-31, a heavier scene than the presets', the user's
 other settings on, Game 96.2 fps): High 94.1 (+2%), Very high 87.3 (+10%), Cinematic 70.5 (+37%).
 Very high is about a quarter of Cinematic's cost, as expected.
+
+0.7.2: the Cinematic-lite preset uses GI Very high instead of High (user's choice). Its +14% cost
+was with High; expect roughly 8% more. Label removed until it is measured again.

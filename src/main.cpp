@@ -737,12 +737,14 @@ const QualityPreset kPresets[] = {
      "Ray tracing stays as the menu sets it.",
      {{"TexturePool", 6144}, {"Anisotropy", 16}, {"ViewDistance", 2}, {"FogCells", 6}, {"SoftShadows", 1},
       {"HairDetail", 1}, {"SkyDetail", 1}}},
-    {"Cinematic-lite", "about 14% slower",
-     "Cinematic without its costly global illumination: High GI (bigger lighting cache\n"
-     "budget, Cinematic fog, glass and hair lighting), the game's Cinematic reflections,\n"
-     "8 GB texture memory, 16x filtering, Cinematic (10x) view distance, the finest fog, and\n"
-     "the Cinematic lamp soft shadows, hair and sky.",
-     {{"CineGi", 2}, {"CineReflections", 1}, {"TexturePool", 8192}, {"Anisotropy", 16}, {"ViewDistance", 10},
+    // GI was High until 0.7.2 (measured +14% then); Very high adds about 8% (per-option measure).
+    {"Cinematic-lite", "",
+     "Cinematic without its costliest global illumination: Very high GI (4x the rays per\n"
+     "lighting probe at the game's probe spacing, plus the bigger lighting cache budget and\n"
+     "Cinematic fog, glass and hair lighting), the game's Cinematic reflections, 8 GB texture\n"
+     "memory, 16x filtering, Cinematic (10x) view distance, the finest fog, and the Cinematic\n"
+     "lamp soft shadows, hair and sky. Not measured since it moved to Very high GI.",
+     {{"CineGi", 3}, {"CineReflections", 1}, {"TexturePool", 8192}, {"Anisotropy", 16}, {"ViewDistance", 10},
       {"FogCells", 4}, {"SoftShadows", 1}, {"HairDetail", 1}, {"SkyDetail", 1}}},
     {"Cinematic", "about 70% slower",
      "Everything at its highest: the game's Cinematic global illumination and reflections, 8 GB\n"
@@ -1339,8 +1341,9 @@ void DrawOverlay(effect_runtime*) {
     }
     ImGui::EndDisabled();
     Help("Sets the Ray tracing and Detail options together. Ultra+ costs about 8%,\n"
-         "Cinematic-lite about 14%, Cinematic about 70% (RTX 5080, 4K, DLSS Quality, Frame\n"
-         "Generation, one scene). Camera effects and HDR are left as they are. Changing an\n"
+         "Cinematic about 70% (RTX 5080, 4K, DLSS Quality, Frame Generation, one scene);\n"
+         "Cinematic-lite isn't measured since it moved to Very high global illumination.\n"
+         "Camera effects and HDR are left as they are. Changing an\n"
          "option afterwards shows Custom.\n"
          "Measure preset costs shows what each one costs on your PC.");
 
