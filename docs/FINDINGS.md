@@ -216,3 +216,10 @@ alone is the other ~50%.
   `s.AsyncLoadingTimeLimit`), GC (`gc.TimeBetweenPurgingPendingKillObjects=61.1`), Lumen card
   captures (`r.LumenScene.SurfaceCache.CardCapturesPerFrame`). The hitch meter (frames over
   50/100/250 ms, pauses over 500 ms apart) is there to tell which, if any, matters.
+
+First comparison (2026-10-31, short runs): the startup pipeline cache had 8699 precompiles and
+finished about 9 s after the add-on connected, before gameplay, so it isn't the stutter. Off
+(about 47 s): about 4 hitches of 50-100 ms, none over 100 ms. On (about 2 min after a reset):
+one clean minute, then 3 hitches over 100 ms within a second (one event, likely streaming or a
+cutscene cut). Inconclusive. 0.5.1 logs run totals on Reset and at exit, and a summary every
+minute even when there were no hitches, so runs line up.

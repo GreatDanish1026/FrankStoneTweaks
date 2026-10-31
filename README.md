@@ -1,4 +1,4 @@
-# FrankStoneTweaks 0.5.0
+# FrankStoneTweaks 0.5.1
 
 Graphics add-on for **The Casting of Frank Stone** (PC, Steam), for ReShade with add-on
 support. Raises the game's ray tracing past what its menu offers and sets the HDR peak

@@ -877,15 +877,27 @@ void HitchOnFrame(float ms) {
             Log("hitch: %.0f ms (shader precaching %s)", ms, ReadInt(L"r.PSOPrecaching") > 0 ? "on" : "off");
         }
     }
-    if (now - g_hitch.minuteStart >= 60000) {
-        if (g_hitch.minute50)
-            Log("hitches in the last minute: %d over 50 ms, %d over 100 ms", g_hitch.minute50, g_hitch.minute100);
+    if (now - g_hitch.minuteStart >= 60000) {  // every minute, hitches or not
+        Log("minute %.0f since reset: %d over 50 ms, %d over 100 ms (shader precaching %s)",
+            (now - g_hitch.since) / 60000.0, g_hitch.minute50, g_hitch.minute100,
+            ReadInt(L"r.PSOPrecaching") > 0 ? "on" : "off");
         g_hitch.minute50 = g_hitch.minute100 = 0;
         g_hitch.minuteStart = now;
     }
 }
 
+// The totals since the last reset, as one log line (on Reset, so runs can be compared).
+void LogHitchTotals(const char* why) {
+    if (!g_hitch.since) return;
+    double minutes = (GetTickCount64() - g_hitch.since) / 60000.0;
+    Log("hitch totals (%s) over %.1f min: %d over 50 ms (%.1f/min), %d over 100 ms, %d over 250 ms, worst %.0f ms, "
+        "%d pauses over 0.5 s",
+        why, minutes, g_hitch.over50, minutes > 0 ? g_hitch.over50 / minutes : 0.0, g_hitch.over100, g_hitch.over250,
+        g_hitch.worst, g_hitch.pauses);
+}
+
 void ResetHitches() {
+    LogHitchTotals("before reset");
     g_hitch = {};
     Log("hitch meter reset (shader precaching %s)", ReadInt(L"r.PSOPrecaching") > 0 ? "on" : "off");
 }
@@ -1331,6 +1343,7 @@ BOOL APIENTRY DllMain(HMODULE module, DWORD reason, LPVOID) {
             reshade::register_overlay(FST_PRODUCT, &DrawOverlay);
             break;
         case DLL_PROCESS_DETACH:
+            LogHitchTotals("game closed");
             if (g_hooked) cvars::UnhookSinks(g_manager);
             reshade::unregister_addon(module);
             if (g_log) fclose(g_log);
