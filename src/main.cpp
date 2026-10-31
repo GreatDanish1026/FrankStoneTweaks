@@ -720,7 +720,9 @@ std::string GameValue(const wchar_t* name) {
 // Costs measured 2026-10-26 with "Measure preset costs": RTX 5080, 4K, DLSS Quality, Frame
 // Generation, the menu's Ultra with Ray Tracing on, one scene, two runs. Average displayed frame
 // rate: Game 144.3 / 146.2, Ultra+ 134.5 / 135.4 (+7% / +8% frame time), Cinematic-lite 128.8
-// (+14%), Cinematic 84.0 / 86.7 (+72% / +69%). docs/FINDINGS.md.
+// (+14%), Cinematic 84.0 / 86.7 (+72% / +69%). After 0.7.3 (Very high GI and the reflection
+// options in the Cinematic presets), 2026-10-31, another scene: Game 111.6, Ultra+ 106.0 (+5%),
+// Cinematic-lite 85.3 (+31%), Cinematic 64.0 (+74%). docs/FINDINGS.md.
 
 struct QualityPreset {
     const char* label;
@@ -731,31 +733,26 @@ struct QualityPreset {
 
 const QualityPreset kPresets[] = {
     {"Game", "", "The game's own settings: everything on the Ray tracing and Detail tabs at Game.", {}},
-    {"Ultra+", "about 8% slower",
+    {"Ultra+", "about 5-8% slower",
      "The cheaper upgrades past the menu's Ultra: 6 GB texture memory, 16x filtering, 2x view\n"
      "distance, finer fog, and the game's Cinematic lamp soft shadows, hair and sky.\n"
      "Ray tracing stays as the menu sets it.",
      {{"TexturePool", 6144}, {"Anisotropy", 16}, {"ViewDistance", 2}, {"FogCells", 6}, {"SoftShadows", 1},
       {"HairDetail", 1}, {"SkyDetail", 1}}},
-    // Measured before 0.7.3: Cinematic-lite +14% with High GI (Very high adds about 8%, per-option
-    // measure), Cinematic about +70%. 0.7.3 adds the reflection roughness and screen trace options
-    // to both, so their labels wait for a new measurement.
-    {"Cinematic-lite", "",
+    {"Cinematic-lite", "about 30% slower",
      "Cinematic without its costliest global illumination: Very high GI (4x the rays per\n"
      "lighting probe at the game's probe spacing, plus the bigger lighting cache budget and\n"
      "Cinematic fog, glass and hair lighting), the game's Cinematic reflections traced up to\n"
      "roughness 0.6 without screen traces, 8 GB texture memory, 16x filtering, Cinematic\n"
-     "(10x) view distance, the finest fog, and the Cinematic lamp soft shadows, hair and sky.\n"
-     "Not measured since its last changes.",
+     "(10x) view distance, the finest fog, and the Cinematic lamp soft shadows, hair and sky.",
      {{"CineGi", 3}, {"CineReflections", 1}, {"RtRoughness", 6}, {"RtScreenTraces", 1}, {"TexturePool", 8192},
       {"Anisotropy", 16}, {"ViewDistance", 10}, {"FogCells", 4}, {"SoftShadows", 1}, {"HairDetail", 1},
       {"SkyDetail", 1}}},
-    {"Cinematic", "",
+    {"Cinematic", "about 75% slower",
      "Everything at its highest: the game's Cinematic global illumination and reflections,\n"
      "reflections traced on every surface without screen traces, 8 GB texture memory, 16x\n"
      "filtering, Cinematic (10x) view distance, the finest fog, and the Cinematic lamp soft\n"
-     "shadows, hair and sky. For photo mode or a lot of GPU headroom. Was about 70% slower\n"
-     "before the reflection options were added; not measured since.",
+     "shadows, hair and sky. For photo mode or a lot of GPU headroom.",
      {{"CineGi", 1}, {"CineReflections", 1}, {"RtRoughness", 10}, {"RtScreenTraces", 1}, {"TexturePool", 8192},
       {"Anisotropy", 16}, {"ViewDistance", 10}, {"FogCells", 4}, {"SoftShadows", 1}, {"HairDetail", 1},
       {"SkyDetail", 1}}},
@@ -1342,9 +1339,9 @@ void DrawOverlay(effect_runtime*) {
         ImGui::EndCombo();
     }
     ImGui::EndDisabled();
-    Help("Sets the Ray tracing and Detail options together. Ultra+ costs about 8% (RTX 5080,\n"
-         "4K, DLSS Quality, Frame Generation, one scene); Cinematic-lite and Cinematic haven't\n"
-         "been measured since their last changes. Camera effects and HDR are left as they are.\n"
+    Help("Sets the Ray tracing and Detail options together. Ultra+ costs about 5-8%,\n"
+         "Cinematic-lite about 30%, Cinematic about 75% (RTX 5080, 4K, DLSS Quality, Frame\n"
+         "Generation). Camera effects and HDR are left as they are.\n"
          "Changing an option afterwards shows Custom.\n"
          "Measure preset costs shows what each one costs on your PC.");
 

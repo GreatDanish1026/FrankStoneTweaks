@@ -1,4 +1,4 @@
-# FrankStoneTweaks 0.7.3
+# FrankStoneTweaks 0.7.4
 
 Graphics add-on for **The Casting of Frank Stone** (PC, Steam), for ReShade with add-on
 support. Raises the game's ray tracing past what its menu offers and sets the HDR peak
@@ -38,8 +38,9 @@ brightness, live, from an in-game overlay.
   illumination instead of Cinematic). Cinematic-lite traces reflections up to roughness 0.6 and
   Cinematic on every surface, both without screen traces; Ultra+ leaves ray tracing to the menu. Camera effects and HDR are left alone.
   Measured on an RTX 5080 at 4K with DLSS Quality and Frame Generation in one scene: Game 146 fps,
-  Ultra+ 135 fps (about 8% slower). Before their latest changes, Cinematic-lite was 129 fps
-  (about 14% slower) and Cinematic 87 fps (about 70% slower); neither has been measured since.
+  Ultra+ 135 fps (about 8% slower). With the current presets, in a heavier scene (Game 112 fps):
+  Ultra+ 106 fps (about 5% slower), Cinematic-lite 85 fps (about 30% slower), Cinematic 64 fps
+  (about 75% slower).
   **Measure preset costs** runs each preset for a few seconds and shows its frame rate on your PC.
   Each Ray tracing and Detail option also has a **Measure** button that does the same for its
   choices, with everything else left as it is.

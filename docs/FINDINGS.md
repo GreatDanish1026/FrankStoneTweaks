@@ -252,3 +252,9 @@ was with High; expect roughly 8% more. Label removed until it is measured again.
 0.7.3: the reflection options are in the presets (user's request): Cinematic-lite roughness 0.6,
 Cinematic 1.0, both with screen traces off; Ultra+ unchanged (ray tracing left to the menu).
 Cinematic's cost label is removed too until both are measured again.
+
+Third preset measurement (2026-10-31, 0.7.3 presets, another scene): Game 8.96 ms (111.6 fps),
+Ultra+ 9.43 (106.0, +5%), Cinematic-lite 11.72 (85.3, +31%), Cinematic 15.61 (64.0, +74%).
+Cinematic-lite went from +14% to +31%: Very high GI (about +8-10%) and the reflection options
+(roughness 0.6, no screen traces). Labels: Ultra+ 5-8%, Cinematic-lite about 30%, Cinematic
+about 75% (0.7.4).
