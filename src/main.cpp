@@ -125,15 +125,24 @@ std::vector<Option> g_options = {
      "High: over 3x the lighting cache's update budget (bounce light keeps up when the\n"
      "camera moves, with less lag and pop-in) and the Cinematic lighting in fog and on\n"
      "glass and hair. Keeps the game's probe spacing, so it costs little.\n"
-     "Cinematic: the game's own unused tier above Ultra. High plus lighting probes every\n"
-     "8 pixels instead of 16 and twice the directions per probe, about 16x the probe\n"
-     "tracing: softer, more stable indirect light, but in one scene it cost about 60% of\n"
-     "the frame rate at 4K. For photo mode or screenshots.\n"
+     "Very high: High plus twice the directions traced per probe (16x16 instead of 8x8,\n"
+     "4x the rays) at the game's probe spacing: less noisy, steadier bounce light in\n"
+     "corners and under furniture, at about a quarter of Cinematic's cost.\n"
+     "Cinematic: the game's own unused tier above Ultra. Very high plus lighting probes\n"
+     "every 8 pixels instead of 16 (4x as many), about 16x the probe tracing: softer, more\n"
+     "stable indirect light, but in one scene it cost about 60% of the frame rate at 4K.\n"
+     "For photo mode or screenshots.\n"
      "Applies with or without the menu's Ray Tracing.",
      L"r.Lumen.ScreenProbeGather.DownsampleFactor",
      {{"Game", 0, {}},
       {"High", 2,
        {{L"r.Lumen.ScreenProbeGather.RadianceCache.NumProbesToTraceBudget", L"1000"},
+        {L"r.Lumen.TranslucencyVolume.TracingOctahedronResolution", L"4"},
+        {L"r.Lumen.TranslucencyVolume.RadianceCache.ProbeResolution", L"16"},
+        {L"r.Lumen.TranslucencyVolume.RadianceCache.NumProbesToTraceBudget", L"1000"}}},
+      {"Very high", 3,
+       {{L"r.Lumen.ScreenProbeGather.RadianceCache.NumProbesToTraceBudget", L"1000"},
+        {L"r.Lumen.ScreenProbeGather.TracingOctahedronResolution", L"16"},
         {L"r.Lumen.TranslucencyVolume.TracingOctahedronResolution", L"4"},
         {L"r.Lumen.TranslucencyVolume.RadianceCache.ProbeResolution", L"16"},
         {L"r.Lumen.TranslucencyVolume.RadianceCache.NumProbesToTraceBudget", L"1000"}}},
@@ -798,29 +807,55 @@ float Mean(const std::vector<float>& v) {
     return static_cast<float>(sum / v.size());
 }
 
-// Cost measurement: each preset in turn, settle then sample; then the options as they were.
-// The settle time covers the game applying the change on its next frame and any stall while
-// it rebuilds lighting caches or shaders.
+// Cost measurement: each stage in turn (every preset, or every choice of one option with the
+// other options as they are), settle then sample; then the options as they were. The settle
+// time covers the game applying the change on its next frame and any stall while it rebuilds
+// lighting caches or shaders.
 constexpr ULONGLONG kSettleMs = 6000, kSampleMs = 8000;
 struct Measure {
     bool running = false;
-    int stage = 0;  // preset index being measured
+    std::string option;               // the option measured, empty for the presets
+    std::vector<std::string> labels;  // one per stage
+    int stage = 0;
     ULONGLONG stageStart = 0;
     bool sampling = false;
     std::vector<float> samples;
     std::vector<std::pair<std::string, int>> saved;  // option values before
-    float resultMs[kPresetCount] = {};
-    bool done = false;
+    std::vector<float> resultMs;
+    bool done = false;  // the presets' last run finished
     std::string note;
 } g_measure;
+float g_presetMs[kPresetCount] = {};  // the presets' last results
+
+// Per option: its last measured choices (label, average ms), first = Game.
+std::map<std::string, std::vector<std::pair<std::string, float>>> g_optionCosts;
+
+void ApplyStage() {
+    if (g_measure.option.empty()) return ApplyPreset(g_measure.stage);
+    if (Option* o = FindOption(g_measure.option.c_str())) o->value = o->choices[g_measure.stage].id;
+    g_dirty = true;
+}
+
+void BeginMeasure() {
+    g_measure.running = true;
+    for (const Option& o : g_options) g_measure.saved.push_back({o.key, o.value});
+    g_measure.resultMs.assign(g_measure.labels.size(), 0);
+    g_measure.stageStart = GetTickCount64();
+    ApplyStage();
+    Log("measure: started (%s)", g_measure.option.empty() ? "presets" : g_measure.option.c_str());
+}
 
 void StartMeasure() {
     g_measure = {};
-    g_measure.running = true;
-    for (const Option& o : g_options) g_measure.saved.push_back({o.key, o.value});
-    g_measure.stageStart = GetTickCount64();
-    ApplyPreset(0);
-    Log("measure: started");
+    for (const QualityPreset& p : kPresets) g_measure.labels.push_back(p.label);
+    BeginMeasure();
+}
+
+void StartMeasureOption(const Option& o) {
+    g_measure = {};
+    g_measure.option = o.key;
+    for (const Choice& c : o.choices) g_measure.labels.push_back(c.label);
+    BeginMeasure();
 }
 
 void FinishMeasure(const char* why) {
@@ -849,22 +884,31 @@ void MeasureOnFrame(float ms, bool focused) {
     if (now - g_measure.stageStart < kSampleMs) return;
     float avg = Mean(g_measure.samples);
     g_measure.resultMs[g_measure.stage] = avg;
-    Log("measure: %s %.2f ms average (%.1f fps) over %zu frames", kPresets[g_measure.stage].label, avg, 1000.0f / avg,
-        g_measure.samples.size());
+    Log("measure: %s %.2f ms average (%.1f fps) over %zu frames", g_measure.labels[g_measure.stage].c_str(), avg,
+        1000.0f / avg, g_measure.samples.size());
     g_measure.samples.clear();
     g_measure.sampling = false;
     g_measure.stageStart = now;
-    if (++g_measure.stage < kPresetCount) {
-        ApplyPreset(g_measure.stage);
+    if (++g_measure.stage < static_cast<int>(g_measure.labels.size())) {
+        ApplyStage();
         return;
     }
-    g_measure.done = true;
-    char line[200];
-    int n = snprintf(line, sizeof(line), "measure: result");
-    for (int i = 1; i < kPresetCount; ++i)
-        n += snprintf(line + n, sizeof(line) - n, ", %s %+.0f%% frame time", kPresets[i].label,
-                      (g_measure.resultMs[i] / g_measure.resultMs[0] - 1) * 100);
-    Log("%s", line);
+    std::string line = "measure: result (" + (g_measure.option.empty() ? std::string("presets") : g_measure.option) + ")";
+    for (size_t i = 1; i < g_measure.labels.size(); ++i) {
+        char b[96];
+        snprintf(b, sizeof(b), ", %s %+.0f%% frame time", g_measure.labels[i].c_str(),
+                 (g_measure.resultMs[i] / g_measure.resultMs[0] - 1) * 100);
+        line += b;
+    }
+    Log("%s", line.c_str());
+    if (g_measure.option.empty()) {
+        g_measure.done = true;
+        for (int i = 0; i < kPresetCount; ++i) g_presetMs[i] = g_measure.resultMs[i];
+    } else {
+        auto& costs = g_optionCosts[g_measure.option];
+        costs.clear();
+        for (size_t i = 0; i < g_measure.labels.size(); ++i) costs.push_back({g_measure.labels[i], g_measure.resultMs[i]});
+    }
     FinishMeasure("done");
 }
 
@@ -1019,6 +1063,30 @@ bool DrawOption(Option& o) {
         ImGui::EndCombo();
     }
     Help(o.tip);
+    // Cost of each choice, measured on this PC (Ray tracing and Detail options).
+    if (!strcmp(o.tab, "Ray tracing") || !strcmp(o.tab, "Detail")) {
+        ImGui::SameLine();
+        ImGui::PushID(o.key);
+        ImGui::BeginDisabled(!g_enabled || g_live.load() != Live::Ready);
+        if (ImGui::SmallButton("Measure")) StartMeasureOption(o);
+        ImGui::EndDisabled();
+        ImGui::PopID();
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("Runs each choice of this option for 14 s (the others stay as they are) and\n"
+                              "shows how much longer each frame takes than with Game. Stand still.");
+        auto it = g_optionCosts.find(o.key);
+        if (it != g_optionCosts.end() && !it->second.empty() && it->second[0].second > 0) {
+            const float base = it->second[0].second;
+            std::string r = "   Measured: Game " + std::to_string(static_cast<int>(1000.0f / base + 0.5f)) + " fps";
+            for (size_t i = 1; i < it->second.size(); ++i) {
+                char b[96];
+                snprintf(b, sizeof(b), ", %s %.0f (%+.0f%%)", it->second[i].first.c_str(), 1000.0f / it->second[i].second,
+                         (it->second[i].second / base - 1) * 100);
+                r += b;
+            }
+            ImGui::TextDisabled("%s", r.c_str());
+        }
+    }
     return changed;
 }
 
@@ -1276,8 +1344,10 @@ void DrawOverlay(effect_runtime*) {
          "Measure preset costs shows what each one costs on your PC.");
 
     if (measuring) {
-        ImGui::TextColored(kAccent, "Measuring %s (%d of %d)... keep the camera still.", kPresets[g_measure.stage].label,
-                           g_measure.stage + 1, kPresetCount);
+        const Option* mo = g_measure.option.empty() ? nullptr : FindOption(g_measure.option.c_str());
+        ImGui::TextColored(kAccent, "Measuring %s%s%s (%d of %zu)... keep the camera still.", mo ? mo->label : "",
+                           mo ? ": " : "", g_measure.labels[g_measure.stage].c_str(), g_measure.stage + 1,
+                           g_measure.labels.size());
         ImGui::SameLine();
         if (ImGui::SmallButton("Stop")) FinishMeasure("stopped");
     } else {
@@ -1290,19 +1360,19 @@ void DrawOverlay(effect_runtime*) {
              "shows how much longer each frame takes than with Game. Stand still in a typical\n"
              "scene and leave the mouse alone; the overlay can stay open. Your options come back\n"
              "afterwards. With Frame Generation on, the frame rate is the displayed one.");
-        if (g_measure.done) {
+        if (!g_measure.note.empty() && g_measure.note != "done") {
             ImGui::SameLine();
-            std::string r = "Game " + std::to_string(static_cast<int>(1000.0f / g_measure.resultMs[0] + 0.5f)) + " fps";
+            ImGui::TextColored(kWarn, "Measurement %s.", g_measure.note.c_str());
+        } else if (g_presetMs[0] > 0) {
+            ImGui::SameLine();
+            std::string r = "Game " + std::to_string(static_cast<int>(1000.0f / g_presetMs[0] + 0.5f)) + " fps";
             for (int i = 1; i < kPresetCount; ++i) {
                 char b[80];
-                snprintf(b, sizeof(b), ", %s %.0f fps (%+.0f%% frame time)", kPresets[i].label,
-                         1000.0f / g_measure.resultMs[i], (g_measure.resultMs[i] / g_measure.resultMs[0] - 1) * 100);
+                snprintf(b, sizeof(b), ", %s %.0f fps (%+.0f%% frame time)", kPresets[i].label, 1000.0f / g_presetMs[i],
+                         (g_presetMs[i] / g_presetMs[0] - 1) * 100);
                 r += b;
             }
             ImGui::TextDisabled("%s", r.c_str());
-        } else if (!g_measure.note.empty()) {
-            ImGui::SameLine();
-            ImGui::TextColored(kWarn, "Measurement %s.", g_measure.note.c_str());
         }
     }
     ImGui::Spacing();

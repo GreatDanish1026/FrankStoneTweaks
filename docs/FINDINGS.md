@@ -233,3 +233,11 @@ minute even when there were no hitches, so runs line up.
 - `r.Lumen.Reflections.ScreenTraces`: "Whether to trace against the screen for reflections before
   falling back to other methods." Off = ray traced only.
 - Both are kept out of the presets until their cost is measured.
+
+## GI "Very high" and per-option measurement (0.7.0)
+
+- GI Very high (id 3) = High + `r.Lumen.ScreenProbeGather.TracingOctahedronResolution=16`, at the
+  game's `DownsampleFactor` 16: one of Cinematic's two 4x multipliers (rays per probe, not probe
+  count). Expected roughly a quarter of Cinematic GI's cost; not measured yet.
+- The measurement runs either the presets or every choice of one option (others unchanged);
+  results per option are shown under it until the game closes.
