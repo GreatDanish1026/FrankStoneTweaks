@@ -248,3 +248,7 @@ Very high is about a quarter of Cinematic's cost, as expected.
 
 0.7.2: the Cinematic-lite preset uses GI Very high instead of High (user's choice). Its +14% cost
 was with High; expect roughly 8% more. Label removed until it is measured again.
+
+0.7.3: the reflection options are in the presets (user's request): Cinematic-lite roughness 0.6,
+Cinematic 1.0, both with screen traces off; Ultra+ unchanged (ray tracing left to the menu).
+Cinematic's cost label is removed too until both are measured again.
