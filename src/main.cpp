@@ -155,6 +155,26 @@ std::vector<Option> g_options = {
       {"Cinematic", 1,
        {{L"r.Lumen.HardwareRayTracing.LightingMode", L"1"},
         {L"r.Lumen.TranslucencyReflections.FrontLayer.Enable", L"1"}}}}},
+    // GLumenReflectionMaxRoughnessToTrace (0.4 in the exe's data) goes straight into the
+    // reflection passes' parameters in this build; there is no post-process override.
+    {"Ray tracing", "Reflections", "RtRoughness", "Reflections on rougher surfaces",
+     "Ray traced reflections stop at this roughness: rougher surfaces (worn metal, wet\n"
+     "ground, varnished wood, car paint) fall back to a blurry approximation. The game\n"
+     "uses 0.4. Higher traces more surfaces: more accurate, but more ray tracing work,\n"
+     "and very rough surfaces can look noisier.",
+     L"r.Lumen.Reflections.MaxRoughnessToTrace",
+     {{"Game", 0, {}},
+      {"0.6", 6, {{L"r.Lumen.Reflections.MaxRoughnessToTrace", L"0.6"}}},
+      {"0.8", 8, {{L"r.Lumen.Reflections.MaxRoughnessToTrace", L"0.8"}}},
+      {"All (1.0)", 10, {{L"r.Lumen.Reflections.MaxRoughnessToTrace", L"1"}}}}},
+    {"Ray tracing", "Reflections", "RtScreenTraces", "Reflection screen traces",
+     "Lumen first tries to find each reflection on screen and only ray traces when that\n"
+     "fails. Screen traces are why reflections fade or smear near the screen edges and\n"
+     "vanish behind your character or foreground objects. Off uses only the ray traced\n"
+     "result: steadier reflections, a little more ray tracing. Needs the menu's Ray Tracing\n"
+     "on (without it, Off loses detail instead).",
+     L"r.Lumen.Reflections.ScreenTraces",
+     {{"Game", 0, {}}, {"Off", 1, {{L"r.Lumen.Reflections.ScreenTraces", L"0"}}}}},
     // ------------------------------------------------ detail (from DirectiveTweaks / UntilDawnTweaks)
     // The menu's Ultra textures and shadows are already the game's Cinematic tier (3000 MB
     // pool, 8192 shadow pages); these go past what the menu reaches.
@@ -729,7 +749,12 @@ Option* FindOption(const char* key) {
     return nullptr;
 }
 
-bool InPresets(const Option& o) { return !strcmp(o.tab, "Ray tracing") || !strcmp(o.tab, "Detail"); }
+// The presets' measured costs predate the reflection roughness and screen trace options, so those
+// two stay out of them (a preset leaves them as they are) until they are measured.
+bool InPresets(const Option& o) {
+    if (!strcmp(o.key, "RtRoughness") || !strcmp(o.key, "RtScreenTraces")) return false;
+    return !strcmp(o.tab, "Ray tracing") || !strcmp(o.tab, "Detail");
+}
 
 int PresetValue(const QualityPreset& p, const char* key) {
     for (auto& [k, id] : p.values)

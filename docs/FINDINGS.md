@@ -223,3 +223,13 @@ finished about 9 s after the add-on connected, before gameplay, so it isn't the 
 one clean minute, then 3 hitches over 100 ms within a second (one event, likely streaming or a
 cutscene cut). Inconclusive. 0.5.1 logs run totals on Reset and at exit, and a summary every
 minute even when there were no hitches, so runs line up.
+
+## Reflection options (0.6.0)
+
+- `r.Lumen.Reflections.MaxRoughnessToTrace` refs `GLumenReflectionMaxRoughnessToTrace`
+  (0x148860e50, 0.4 in .data, no help text). In this build it is copied straight into the
+  reflection passes' parameters (e.g. 0x143452815, 0x1434558cf); no post-process-volume override.
+  `RoughnessFadeLength` is the float after it. No `MaxRoughnessToTraceClamp` in 5.1.
+- `r.Lumen.Reflections.ScreenTraces`: "Whether to trace against the screen for reflections before
+  falling back to other methods." Off = ray traced only.
+- Both are kept out of the presets until their cost is measured.
