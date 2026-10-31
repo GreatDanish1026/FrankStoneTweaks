@@ -1,4 +1,4 @@
-# FrankStoneTweaks 0.8.0
+# FrankStoneTweaks 0.8.1
 
 Graphics add-on for **The Casting of Frank Stone** (PC, Steam), for ReShade with add-on
 support. Raises the game's ray tracing past what its menu offers and sets the HDR peak
@@ -24,9 +24,7 @@ brightness, live, from an in-game overlay.
 - **Camera**: switches for effects the menu can't turn off: depth of field (the menu only has
   Normal and Ultra), chromatic aberration, vignette, the game's lens flares (or just their
   anamorphic streaks), bloom (or full-resolution bloom), fog glow, and the always-on
-  sharpening. Motion blur and film grain are left to the menu. Also *RTX Dynamic Vibrance*
-  (Subtle, NVIDIA default or Strong): NVIDIA's AI colour filter, which the game ships with its
-  DLSS files but never switches on; the tab shows whether your PC supports it.
+  sharpening. Motion blur and film grain are left to the menu.
 - **Stutter** (experimental): *Shader precaching* compiles the shaders each object needs while
   its level loads, instead of the first time it comes on screen; *skip unready draws* also
   lets an object pop in a frame late rather than hitch. A **hitch meter** counts frames over

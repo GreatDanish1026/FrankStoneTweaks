@@ -268,3 +268,13 @@ disables), `.SaturationBoost` [0..1] (default 0.5, only at higher intensity).
 1 in .data until `QueryStreamlineDeepDVCSupport` runs; it writes 2 for non-NVIDIA and 6 when the
 RHI says no) is shown under the Camera tab. Choices: Subtle 0.3/0.3, NVIDIA default 0.5/0.5,
 Strong 0.8/0.7. Not tried in game yet; HDR behaviour unknown.
+
+Result: the option did nothing in game (values all taken). `PostProcessPassAtEnd_RenderThread`
+adds the DeepDVC passes only when `QueryStreamlineDeepDVCSupport()` returns 0, and that asks
+Streamline whether feature 5 is loaded. `FStreamlineRHIModule::InitializeStreamline` builds
+slInit's feature list (`Ptr_init` call at 0x1420499d4) with a helper lambda (0x142048740) that
+adds a feature only if `IPluginManager::FindPlugin(<plugin>)` finds it; for DeepDVC the plugin is
+`StreamlineDeepDVC`, then `-sldeepdvc` / `-slnodeepdvc` on the command line decide. The game's
+paks hold only `DLSS.uplugin` and `Streamline.uplugin`, so DeepDVC is never loaded, and it is
+decided before ReShade loads. Option removed in 0.8.1; the NVIDIA app's own RTX Dynamic
+Vibrance filter is the way to get the effect.
