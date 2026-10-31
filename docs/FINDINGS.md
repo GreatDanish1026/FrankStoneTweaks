@@ -241,3 +241,7 @@ minute even when there were no hitches, so runs line up.
   count). Expected roughly a quarter of Cinematic GI's cost; not measured yet.
 - The measurement runs either the presets or every choice of one option (others unchanged);
   results per option are shown under it until the game closes.
+
+GI measured with the per-option button (2026-10-31, a heavier scene than the presets', the user's
+other settings on, Game 96.2 fps): High 94.1 (+2%), Very high 87.3 (+10%), Cinematic 70.5 (+37%).
+Very high is about a quarter of Cinematic's cost, as expected.

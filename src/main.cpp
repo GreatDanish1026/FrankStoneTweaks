@@ -130,8 +130,9 @@ std::vector<Option> g_options = {
      "corners and under furniture, at about a quarter of Cinematic's cost.\n"
      "Cinematic: the game's own unused tier above Ultra. Very high plus lighting probes\n"
      "every 8 pixels instead of 16 (4x as many), about 16x the probe tracing: softer, more\n"
-     "stable indirect light, but in one scene it cost about 60% of the frame rate at 4K.\n"
-     "For photo mode or screenshots.\n"
+     "stable indirect light, but very expensive. For photo mode or screenshots.\n"
+     "Measured (RTX 5080, 4K, DLSS Quality, Frame Generation, one scene): High +2%,\n"
+     "Very high +10%, Cinematic +37% frame time. Measure checks it on your PC.\n"
      "Applies with or without the menu's Ray Tracing.",
      L"r.Lumen.ScreenProbeGather.DownsampleFactor",
      {{"Game", 0, {}},
